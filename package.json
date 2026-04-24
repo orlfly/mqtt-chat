@@ -5,24 +5,28 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^9.0.0",
-    "@mui/material": "^9.0.0",
+    "@mui/icons-material": "^5.16.7",
+    "@mui/material": "^5.16.7",
     "@tanstack/react-virtual": "^3.13.24",
     "@types/axios": "^0.9.36",
     "ajv": "^8.18.0",
     "axios": "^1.15.1",
     "date-fns": "^4.1.0",
+    "marked": "^18.0.2",
     "mqtt": "^5.15.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-scripts": "5.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-scripts": "^5.0.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "typescript": "^6.0.3"
+    "@types/marked": "^5.0.2",
+    "@types/mqtt": "^0.0.34",
+    "@types/node": "^20.17.10",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^4.9.5"
   },
   "scripts": {
     "start": "react-scripts start",

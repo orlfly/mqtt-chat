@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = {
   webpack: {
     configure: (webpackConfig) => {
@@ -18,6 +20,3 @@ module.exports = {
     },
   },
 };
-
-// Add path module requirement at the top
-const path = require('path');

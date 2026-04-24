@@ -173,27 +173,54 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ connectionSuccess, onSelectRo
           p: 2,
           display: "flex",
           alignItems: "center",
-          justifyContent: "flex-start",
+          justifyContent: "space-between",
           gap: 1,
           flexShrink: 0,
         }}
       >
-        <Tooltip title={isCollapsed ? "View history" : "Hide history"} placement="right">
-          <IconButton
-            onClick={handleToggleCollapse}
-            size="small"
-            sx={{
-              color: "#6b7280",
-              "&:hover": {
-                backgroundColor: "#e5e7eb",
-                color: "#1f2937",
-                transform: "scale(1.05)",
-              },
-            }}
-          >
-            {isCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
-          </IconButton>
-        </Tooltip>
+        {!isCollapsed && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Tooltip title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"} placement="right">
+              <IconButton
+                onClick={handleToggleCollapse}
+                size="small"
+                sx={{
+                  color: "#6b7280",
+                  "&:hover": {
+                    backgroundColor: "#e5e7eb",
+                    color: "#1f2937",
+                    transform: "scale(1.05)",
+                  },
+                }}
+              >
+                {isCollapsed ? <MenuIcon /> : <MenuOpenIcon />}
+              </IconButton>
+            </Tooltip>
+            <Box>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: '#1f2937' }}>Chats</h3>
+              <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#6b7280' }}>{chats.length} conversations</p>
+            </Box>
+          </Box>
+        )}
+        
+        {isCollapsed && (
+          <Tooltip title="Expand sidebar" placement="right">
+            <IconButton
+              onClick={handleToggleCollapse}
+              size="small"
+              sx={{
+                color: "#6b7280",
+                "&:hover": {
+                  backgroundColor: "#e5e7eb",
+                  color: "#1f2937",
+                  transform: "scale(1.05)",
+                },
+              }}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       {/* Chat history container */}

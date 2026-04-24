@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import './App.css';
 import { Box } from '@mui/material';
 import ChatLayout from './components/ChatLayout';
@@ -10,9 +10,17 @@ export const AppContext = React.createContext<any>(null);
 function App() {
   const [mqttInitialized, setMqttInitialized] = useState(false);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
+  const mqttInitializedRef = useRef(false);
 
   useEffect(() => {
+    // Skip if already initialized to prevent React Strict Mode side effects
+    if (mqttInitializedRef.current) {
+      return;
+    }
+
     console.log('Initializing MQTT connection...');
+    mqttInitializedRef.current = true;
+    
     // Initialize MQTT connection with v5.0 and user properties when app starts
     mqttService.connectWithUserProperties()
       .then(() => {
@@ -38,7 +46,7 @@ function App() {
       console.log('Cleaning up MQTT connection...');
       mqttService.disconnect();
     };
-  }, []);
+  }, []); // Empty dependency array ensures this only runs once
 
   if (!mqttInitialized) {
     return (

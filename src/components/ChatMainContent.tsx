@@ -9,10 +9,12 @@ import {
   ListItem, 
   ListItemText,
   CircularProgress,
-  InputAdornment
+  InputAdornment,
+  Tooltip
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PeopleIcon from '@mui/icons-material/People';
+import MenuIcon from '@mui/icons-material/Menu';
 import mqttService, { Message } from '../services/mqttService';
 
 interface ChatRoomInfo {
@@ -39,7 +41,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     }
   }, []);
 
-  // Subscribe to MQTT room and handle messages
+// Subscribe to MQTT room and handle messages
   useEffect(() => {
     if (!selectedRoom) return;
 
@@ -48,16 +50,14 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     
     // Add message listener
     const handleMessage = (msg: Message) => {
-      if (msg.room === selectedRoom.id) {
-        setMessages(prev => {
-          // Prevent duplicate messages
-          const exists = prev.some(m => m.id === msg.id);
-          if (!exists) {
-            return [...prev, msg];
-          }
-          return prev;
-        });
-      }
+      setMessages(prev => {
+        // Prevent duplicate messages
+        const exists = prev.some(m => m.id === msg.id);
+        if (!exists) {
+          return [...prev, msg];
+        }
+        return prev;
+      });
     };
 
     mqttService.addMessageListener(handleMessage);
@@ -75,6 +75,38 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // State for marked module
+  const [markedModule, setMarkedModule] = React.useState<any>(null);
+
+  // Dynamically load marked module
+  React.useEffect(() => {
+    const loadMarked = async () => {
+      const markedModule = await import('marked');
+      setMarkedModule(markedModule);
+    };
+    loadMarked();
+  }, []);
+
+  // Markdown parser function
+  const parseMarkdown = (text: string) => {
+    if (markedModule && markedModule.default && typeof markedModule.default.parse === 'function') {
+      try {
+        return markedModule.default.parse(text || '');
+      } catch (error) {
+        console.error('Error parsing markdown:', error);
+        return text || '';
+      }
+    } else if (markedModule && markedModule.marked) {
+      try {
+        return markedModule.marked(text || '');
+      } catch (error) {
+        console.error('Error parsing markdown:', error);
+        return text || '';
+      }
+    }
+    return text || '';
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -201,7 +233,18 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                     </Typography>
                   )}
                   <ListItemText
-                    primary={message.text}
+                    primary={
+                      markedModule ? (
+                        <div 
+                          dangerouslySetInnerHTML={{ 
+                            __html: parseMarkdown(message.text) 
+                          }} 
+                          style={{ wordWrap: 'break-word' }}
+                        />
+                      ) : (
+                        <span>{message.text}</span>
+                      )
+                    }
                     secondary={formatTime(message.timestamp)}
                     sx={{ 
                       wordWrap: 'break-word',
@@ -226,12 +269,12 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
           width: '100%',
           maxWidth: '100%',
           borderRadius: 6,
-          p: 1,
+          p: 0.5,
           position: 'relative',
           bgcolor: 'white',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
           border: '1px solid #e0e0e0',
-          mx: { xs: 0.5, sm: 1, md: 2 }, // Add horizontal margins on smaller screens
+          mx: { xs: 0.5, sm: 0.5, md: 0.5 }, // Add horizontal margins on smaller screens
         }}
       >
           <TextField
@@ -245,30 +288,28 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
             disabled={isLoading}
             multiline
             maxRows={4}
-            slotProps={{
-              input: {
-                sx: { borderRadius: 20, py: 0.5, px: 2 },
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleSendMessage}
-                      disabled={!inputValue.trim() || isLoading || !selectedRoom}
-                      sx={{
-                        bgcolor: inputValue.trim() && !isLoading && selectedRoom ? '#007bff' : 'grey.300',
-                        color: 'white',
-                        '&:hover': {
-                          bgcolor: inputValue.trim() && !isLoading && selectedRoom ? '#0056b3' : 'grey.400',
-                        },
-                        borderRadius: '50%',
-                        width: 36,
-                        height: 36,
-                      }}
-                    >
-                      {isLoading ? <CircularProgress size={20} /> : <SendIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                )
-              }
+            InputProps={{
+              sx: { borderRadius: 20, py: 0.5, px: 2 },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={handleSendMessage}
+                    disabled={!inputValue.trim() || isLoading || !selectedRoom}
+                    sx={{
+                      bgcolor: inputValue.trim() && !isLoading && selectedRoom ? '#007bff' : 'grey.300',
+                      color: 'white',
+                      '&:hover': {
+                        bgcolor: inputValue.trim() && !isLoading && selectedRoom ? '#0056b3' : 'grey.400',
+                      },
+                      borderRadius: '50%',
+                      width: 36,
+                      height: 36,
+                    }}
+                  >
+                    {isLoading ? <CircularProgress size={20} /> : <SendIcon />}
+                  </IconButton>
+                </InputAdornment>
+              )
             }}
           />
       </Paper>

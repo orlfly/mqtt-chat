@@ -41,27 +41,34 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
 
   // Subscribe to MQTT room and handle messages
   useEffect(() => {
+    console.log('ChatRoom useEffect: About to subscribe to room:', room.id, 'Room info:', room, 'Client ID:', mqttService.clientId);
+    
     // Subscribe to the room when component mounts
     mqttService.subscribeToRoom(room.id);
     
     // Add message listener
     const handleMessage = (msg: Message) => {
-      if (msg.room === room.id) {
-        setMessages(prev => {
-          // Prevent duplicate messages
-          const exists = prev.some(m => m.id === msg.id);
-          if (!exists) {
-            return [...prev, msg];
-          }
-          return prev;
-        });
-      }
+      console.log('ChatRoom handleMessage: Received message:', msg, 'Current room:', room);
+      // For both group and private chat, we want to show messages in the current room
+      // Since MQTT routing handles delivering the right messages to the right topic,
+      // we can just show any received message in the current room
+      setMessages(prev => {
+        // Prevent duplicate messages
+        const exists = prev.some(m => m.id === msg.id);
+        if (!exists) {
+          console.log('Adding new message to room:', msg);
+          return [...prev, msg];
+        }
+        console.log('Message already exists, skipping duplicate:', msg);
+        return prev;
+      });
     };
 
     mqttService.addMessageListener(handleMessage);
 
     // Cleanup on unmount
     return () => {
+      console.log('ChatRoom cleanup: Unsubscribing from room:', room.id);
       mqttService.unsubscribeFromRoom(room.id);
       mqttService.removeMessageListener(handleMessage);
     };
@@ -76,17 +83,45 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = async () => {
+const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
     setIsLoading(true);
     
     try {
-      // Send message via MQTT service
-      await mqttService.sendMessage(inputValue, 'You', room.id);
+      // Create a local message object to display immediately
+      const localMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        text: inputValue,
+        sender: 'You',
+        timestamp: new Date(),
+      };
+      
+      // Add the message to local messages immediately
+      setMessages(prev => [...prev, localMessage]);
+      
+      console.log('About to send message - Room info:', room);
+      console.log('Is group chat?', room.isGroup);
+      
+      // Check if this is a private message (user chat) or group chat
+      if (room.isGroup) {
+        // Send group message via MQTT service
+        console.log('Sending group message to room:', room.id);
+        await mqttService.sendMessage(inputValue, 'You', room.id);
+      } else {
+        // For private messages, extract the target client ID from the room ID
+        // Room ID format for users is 'user_{clientId}'
+        const targetClientId = room.id.startsWith('user_') ? room.id.substring(5) : room.id;
+        console.log('Sending private message to client:', targetClientId, 'Room ID:', room.id);
+        
+        // Send private message to the specific user's inbound topic
+        await mqttService.sendPrivateMessage(inputValue, mqttService.clientId || 'You', targetClientId, room.id);
+      }
       setInputValue('');
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Remove the message if sending failed
+      setMessages(prev => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
     }
@@ -99,9 +134,41 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
     }
   };
 
-  // Format time for messages
+// Format time for messages
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // State for marked module
+  const [markedModule, setMarkedModule] = React.useState<any>(null);
+
+  // Dynamically load marked module
+  React.useEffect(() => {
+    const loadMarked = async () => {
+      const markedModule = await import('marked');
+      setMarkedModule(markedModule);
+    };
+    loadMarked();
+  }, []);
+
+  // Markdown parser function
+  const parseMarkdown = (text: string) => {
+    if (markedModule && markedModule.default && typeof markedModule.default.parse === 'function') {
+      try {
+        return markedModule.default.parse(text || '');
+      } catch (error) {
+        console.error('Error parsing markdown:', error);
+        return text || '';
+      }
+    } else if (markedModule && markedModule.marked) {
+      try {
+        return markedModule.marked(text || '');
+      } catch (error) {
+        console.error('Error parsing markdown:', error);
+        return text || '';
+      }
+    }
+    return text || '';
   };
 
   return (
@@ -174,10 +241,20 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
                     </Typography>
                   )}
                   <ListItemText
-                    primary={message.text}
+                    primary={
+                      markedModule ? (
+                        <div 
+                          dangerouslySetInnerHTML={{ 
+                            __html: parseMarkdown(message.text) 
+                          }} 
+                          style={{ wordWrap: 'break-word' }}
+                        />
+                      ) : (
+                        <span>{message.text}</span>
+                      )
+                    }
                     secondary={formatTime(message.timestamp)}
                     sx={{ 
-                      wordWrap: 'break-word',
                       mb: 0,
                       '& .MuiListItemText-secondary': {
                         fontSize: '0.7rem',
@@ -213,31 +290,29 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
             onKeyDown={handleKeyPress}
             disabled={isLoading}
             multiline
-            maxRows={4}
-            slotProps={{
-              input: {
-                sx: { borderRadius: 20, py: 0.5, px: 2 },
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={handleSendMessage}
-                      disabled={!inputValue.trim() || isLoading}
-                      sx={{
-                        bgcolor: inputValue.trim() && !isLoading ? '#007bff' : 'grey.300',
-                        color: 'white',
-                        '&:hover': {
-                          bgcolor: inputValue.trim() && !isLoading ? '#0056b3' : 'grey.400',
-                        },
-                        borderRadius: '50%',
-                        width: 36,
-                        height: 36,
-                      }}
-                    >
-                      {isLoading ? <CircularProgress size={20} /> : <SendIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                )
-              }
+            maxRows={8}
+            InputProps={{
+              sx: { borderRadius: 20, py: 1, px: 2 },
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={handleSendMessage}
+                    disabled={!inputValue.trim() || isLoading}
+                    sx={{
+                      bgcolor: inputValue.trim() && !isLoading ? '#007bff' : 'grey.300',
+                      color: 'white',
+                      '&:hover': {
+                        bgcolor: inputValue.trim() && !isLoading ? '#0056b3' : 'grey.400',
+                      },
+                      borderRadius: '50%',
+                      width: 36,
+                      height: 36,
+                    }}
+                  >
+                    {isLoading ? <CircularProgress size={20} /> : <SendIcon />}
+                  </IconButton>
+                </InputAdornment>
+              )
             }}
           />
       </Paper>

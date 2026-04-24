@@ -27,7 +27,6 @@ class MockMQTTService {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text,
       sender,
-      room: roomId,
       timestamp: new Date(),
     };
     
@@ -64,7 +63,6 @@ class MockMQTTService {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text,
       sender,
-      room: roomId,
       timestamp: new Date(),
     };
     

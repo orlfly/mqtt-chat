@@ -1,4 +1,5 @@
 import axios from 'axios';
+import appConfig from '../config/appConfig';
 
 type AxiosInstance = any;
 type AxiosResponse<T = any> = {
@@ -80,15 +81,22 @@ interface BrokerStatus {
 class EMQXApiService {
   private api: AxiosInstance;
   
-  constructor(config: EMQXConfig) {
+  constructor(config?: EMQXConfig) {
+    // Use provided config or fall back to app config
+    const effectiveConfig = config || {
+      baseUrl: appConfig.emqx.baseUrl,
+      apiKey: appConfig.emqx.apiKey,
+      apiSecret: appConfig.emqx.apiSecret
+    };
+    
     // In development, use proxy path; in production, use direct URL
     // The proxy in package.json forwards /api/v5 requests to http://localhost:18083
     const baseURL = process.env.NODE_ENV === 'development' 
-      ? '/api/v5'  // Proxy path handled by react-scripts
-      : `${config.baseUrl}/api/v5`;  // Direct API in production
+      ? appConfig.development.proxyApiPath  // Proxy path handled by react-scripts
+      : `${effectiveConfig.baseUrl}/api/v5`;  // Direct API in production
 
     // Create the basic auth token
-    const authToken = this.generateAuthToken(config.apiKey, config.apiSecret);
+    const authToken = this.generateAuthToken(effectiveConfig.apiKey, effectiveConfig.apiSecret);
     
     this.api = axios.create({
       baseURL: baseURL,

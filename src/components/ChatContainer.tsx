@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './ChatContainer.css';
 import ChatRoom from './ChatRoom';
 import Sidebar from './Sidebar';
 import emqxApiClient from '../services/emqxApiClient';
+import mqttService from '../services/mqttService';
 
 interface ChatRoomInfo {
   id: string;
@@ -18,19 +19,45 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoomInfo | null>(null);
   const [chatRooms, setChatRooms] = useState<ChatRoomInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    // Try to get saved preference from localStorage
+    const savedPreference = localStorage.getItem('sidebarCollapsed');
+    return savedPreference ? JSON.parse(savedPreference) : false;
+  });
+  const hasFetchedData = useRef(false); // Track if data has already been fetched
+
+  // Save preference to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev: boolean) => !prev);
+  };
 
   useEffect(() => {
+    // Prevent duplicate API calls in React StrictMode
+    if (hasFetchedData.current || !connectionSuccess) {
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
       try {
         if (connectionSuccess) {
+          // Mark as fetched before starting API calls to prevent duplicate calls
+          hasFetchedData.current = true;
+          
           // Get group chats from EMQX API
           const groupChats = await emqxApiClient.getGroupChats();
           
           // Get active users from EMQX API
           const users = await emqxApiClient.getUserList();
           
-          // Combine group chats and users into a single list
+          // Update client statuses in localStorage based on EMQX API data
+          mqttService.updateClientStatusesFromEmqxApi(users);
+          
+          // Combine group chats and users from localStorage into a single list
           const rooms: ChatRoomInfo[] = [];
           
           // Add group chats
@@ -42,16 +69,24 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
             });
           });
           
-          // Add unique users (based on clientId)
+          // Add unique users from localStorage (using stored details)
+          const allStoredClients = mqttService.getAllStoredClients();
           const userIdMap = new Map();
-          users.forEach(user => {
-            if (!userIdMap.has(user.clientId)) {
+          
+          // Add users from stored client details
+          allStoredClients.forEach(client => {
+            // Skip if it's the page's own client
+            if (client.client_id === mqttService.clientId) {
+              return;
+            }
+            
+            if (!userIdMap.has(client.client_id)) {
               rooms.push({
-                id: `user_${user.clientId}`,
-                name: user.username || user.clientId,
+                id: `user_${client.client_id}`,
+                name: client.online ? `${client.name} (${client.emoji})` : `${client.name} (${client.emoji}) - offline`,
                 isGroup: false
               });
-              userIdMap.set(user.clientId, true);
+              userIdMap.set(client.client_id, true);
             }
           });
           
@@ -98,6 +133,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
             rooms={chatRooms} 
             onSelectRoom={setSelectedRoom} 
             currentRoom={selectedRoom}
+            isCollapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebar}
           />
           {selectedRoom ? (
             <ChatRoom room={selectedRoom} />
