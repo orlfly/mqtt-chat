@@ -9,12 +9,10 @@ import {
   ListItem, 
   ListItemText,
   CircularProgress,
-  InputAdornment,
-  Tooltip
+  InputAdornment
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import PeopleIcon from '@mui/icons-material/People';
-import MenuIcon from '@mui/icons-material/Menu';
 import mqttService, { Message } from '../services/mqttService';
 import { useClients } from '../context/ClientContext';
 
@@ -216,10 +214,15 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
           alignItems: 'center',
           justifyContent: 'center',
           height: '100%',
+          px: { xs: 0.5, sm: 1, md: 2 },
+          py: 2,
+          overflow: 'hidden',
+          width: '100%',
+          backgroundColor: '#fff',
         }}
       >
-        <Typography variant="h6" color="textSecondary">
-          Select a chat to start messaging
+        <Typography variant="h6" sx={{ color: '#9ca3af' }}>
+          请选择聊天
         </Typography>
       </Box>
     );
@@ -231,17 +234,17 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'stretch', // Changed from 'center' to 'stretch' to fully utilize width
+        alignItems: 'stretch',
         justifyContent: 'flex-start',
         px: { xs: 0.5, sm: 1, md: 2 },
-        py: 2,
+        py: 0.5,
         overflow: 'hidden',
         maxHeight: '100vh',
         width: '100%',
       }}
     >
       {/* Chat header */}
-      <Box sx={{ width: '100%', maxWidth: '100%', mb: 1, px: { xs: 0.5, sm: 1, md: 2 } }}>
+      <Box sx={{ width: '100%', maxWidth: '100%', mb: 0, bgcolor: 'white', borderRadius: 2, border: '1px solid #e0e0e0', py: 1, px: 2 }}>
         <Typography variant="h5" sx={{ fontWeight: 600, color: '#171717' }}>
           {selectedRoom.name} {selectedRoom.isGroup ? '(Group)' : '(Direct)'}
         </Typography>
@@ -254,7 +257,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
           maxWidth: '100%',
           flex: 1,
           overflowY: 'auto',
-          mb: 1,
+          mb: 0.5,
           bgcolor: 'white',
           borderRadius: 2,
           border: '1px solid #e0e0e0',
@@ -338,19 +341,20 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
       </Box>
 
       {/* Input area */}
-      <Paper
-        sx={{
-          width: '100%',
-          maxWidth: '100%',
-          borderRadius: 6,
-          p: 0.5,
-          position: 'relative',
-          bgcolor: 'white',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-          border: '1px solid #e0e0e0',
-          mx: { xs: 0.5, sm: 0.5, md: 0.5 }, // Add horizontal margins on smaller screens
-        }}
-      >
+      <Box sx={{ display: 'flex', alignItems: 'center', height: 80 }}>
+        <Paper
+          sx={{
+            flex: 1,
+            height: 72,
+            borderRadius: 6,
+            p: 0.5,
+            position: 'relative',
+            bgcolor: 'white',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+            border: '1px solid #e0e0e0',
+            mx: { xs: 0.5, sm: 0.5, md: 0.5 },
+          }}
+        >
           <TextField
             inputRef={inputRef}
             fullWidth
@@ -362,8 +366,9 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
             disabled={isLoading}
             multiline
             maxRows={4}
+            sx={{ height: 62, '& .MuiOutlinedInput-root': { height: 62 } }}
             InputProps={{
-              sx: { borderRadius: 20, py: 0.5, px: 2 },
+              sx: { borderRadius: 20, py: 2, px: 2 },
               endAdornment: (
                 <InputAdornment position="end">
                   <IconButton
@@ -386,7 +391,8 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
               )
             }}
           />
-      </Paper>
+        </Paper>
+      </Box>
     </Box>
   );
 };

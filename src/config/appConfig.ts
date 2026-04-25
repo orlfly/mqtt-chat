@@ -57,8 +57,8 @@ function validateConfig(config: AppConfig): void {
 const appConfig: AppConfig = {
   mqtt: {
     brokerUrl: process.env.REACT_APP_MQTT_BROKER_URL || defaultConfig.mqtt.brokerUrl,
-    username: process.env.REACT_APP_MQTT_USERNAME || defaultConfig.mqtt.username,
-    password: process.env.REACT_APP_MQTT_PASSWORD || defaultConfig.mqtt.password,
+    username: defaultConfig.mqtt.username, // Default value for backward compatibility
+    password: defaultConfig.mqtt.password, // Default value for backward compatibility
     connectTimeout: parseInt(process.env.REACT_APP_MQTT_CONNECT_TIMEOUT || defaultConfig.mqtt.connectTimeout.toString(), 10),
     reconnectPeriod: parseInt(process.env.REACT_APP_MQTT_RECONNECT_PERIOD || defaultConfig.mqtt.reconnectPeriod.toString(), 10),
     clientId: process.env.REACT_APP_MQTT_CLIENT_ID || defaultConfig.mqtt.clientId,

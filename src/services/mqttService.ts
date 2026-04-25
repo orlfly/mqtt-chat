@@ -50,19 +50,23 @@ class MQTTService {
     };
   }
   
-  async connectWithUserProperties(): Promise<void> {
+  async connectWithUserProperties(username?: string, password?: string): Promise<void> {
     if (this.hasConnectedOnce && this.client?.connected) {
       console.log('Already connected, skipping connect');
       return Promise.resolve();
     }
+    
+    // Use provided credentials or fallback to env/config defaults
+    const connectUsername = username || process.env.REACT_APP_MQTT_USERNAME || 'admin';
+    const connectPassword = password || process.env.REACT_APP_MQTT_PASSWORD || 'public';
     
     return new Promise((resolve, reject) => {
       try {
         this.client = mqtt.connect(this.brokerUrl, {
           clientId: appConfig.mqtt.clientId,
           protocolVersion: 5,
-          username: process.env.REACT_APP_MQTT_USERNAME || 'admin',
-          password: process.env.REACT_APP_MQTT_PASSWORD || 'public',
+          username: connectUsername,
+          password: connectPassword,
           properties: {
             userProperties: {
               name: appConfig.mqtt.clientId,
