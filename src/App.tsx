@@ -3,9 +3,12 @@ import './App.css';
 import { Box } from '@mui/material';
 import ChatLayout from './components/ChatLayout';
 import mqttService from './services/mqttService';
+import { ClientProvider, registerClientContext, useClients } from './context/ClientContext';
 
-// Global state to share MQTT connection status
-export const AppContext = React.createContext<any>(null);
+const AppContent: React.FC<{ connectionSuccess: boolean }> = ({ connectionSuccess }) => {
+  useClients();
+  return <ChatLayout connectionSuccess={connectionSuccess} />;
+};
 
 function App() {
   const [mqttInitialized, setMqttInitialized] = useState(false);
@@ -13,7 +16,6 @@ function App() {
   const mqttInitializedRef = useRef(false);
 
   useEffect(() => {
-    // Skip if already initialized to prevent React Strict Mode side effects
     if (mqttInitializedRef.current) {
       return;
     }
@@ -21,12 +23,10 @@ function App() {
     console.log('Initializing MQTT connection...');
     mqttInitializedRef.current = true;
     
-    // Initialize MQTT connection with v5.0 and user properties when app starts
     mqttService.connectWithUserProperties()
       .then(() => {
         console.log('MQTT service with user properties initialized successfully');
         
-        // Wait a bit for connection to be fully established
         setTimeout(() => {
           console.log('MQTT connected:', mqttService.isConnected());
           mqttService.refreshConnectionStatus();
@@ -38,15 +38,14 @@ function App() {
       .catch(error => {
         console.error('Failed to initialize MQTT service with user properties:', error);
         setConnectionSuccess(false);
-        setMqttInitialized(true); // Still proceed even if MQTT fails
+        setMqttInitialized(true);
       });
 
-    // Clean up connection when app unmounts
     return () => {
       console.log('Cleaning up MQTT connection...');
       mqttService.disconnect();
     };
-  }, []); // Empty dependency array ensures this only runs once
+  }, []);
 
   if (!mqttInitialized) {
     return (
@@ -57,10 +56,20 @@ function App() {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', backgroundColor: '#f1f1f1' }}>
-      <ChatLayout connectionSuccess={connectionSuccess || false} />
-    </Box>
+    <ClientProvider>
+      <AppContentWrapper connectionSuccess={connectionSuccess || false} />
+    </ClientProvider>
   );
 }
+
+const AppContentWrapper: React.FC<{ connectionSuccess: boolean }> = ({ connectionSuccess }) => {
+  const { refreshClients } = useClients();
+  
+  useEffect(() => {
+    registerClientContext(refreshClients, () => {});
+  }, [refreshClients]);
+  
+  return <ChatLayout connectionSuccess={connectionSuccess} />;
+};
 
 export default App;

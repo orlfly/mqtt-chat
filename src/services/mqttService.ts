@@ -2,6 +2,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import mockMQTTService from './mockMQTTService';
 import emqxApiClient from './emqxApiClient';
 import appConfig from '../config/appConfig';
+import { refreshClientList } from '../context/ClientContext';
 
 interface Message {
   id: string;
@@ -152,6 +153,7 @@ class MQTTService {
                         emoji: emoji || existingDetails.emoji,
                         online: existingDetails.online
                       });
+                      refreshClientList();
                     }
                   } else {
                     console.log('[connectWithUserProperties] Creating new client details for:', senderClientId);
@@ -161,6 +163,7 @@ class MQTTService {
                       emoji: emoji || '👤',
                       online: true
                     });
+                    refreshClientList();
                   }
                 }
               }
@@ -241,18 +244,15 @@ class MQTTService {
     console.log('subscribeToRoom called - useMockService:', this.useMockService, ', client connected:', this.client?.connected, 'Room ID:', roomId);
     
     // Topic 构建规则：
-    // 1. 群聊 (group_ 开头): group_{name}/bound 格式
-    // 2. 私聊 (user_ 开头): 不需要订阅特殊主题，私聊通过入站主题接收
-    // 3. 其他: chat/{roomId} 格式
+    // 群聊: group_{name} 或直接 {name} → group_{name}/bound 格式
+    // 私聊不需要订阅特殊主题（通过入站主题接收）
     let topic: string;
     
     if (roomId.startsWith('group_')) {
-      // 群聊：转换为 group_xxx/bound 格式
       const groupName = roomId.substring(6);
       topic = `group_${groupName}/bound`;
     } else {
-      // 私聊不需要订阅特殊主题，其他情况使用 chat 前缀
-      topic = `chat/${roomId}`;
+      topic = `group_${roomId}/bound`;
     }
     
     console.log('Final subscription topic will be:', topic);
@@ -302,18 +302,15 @@ class MQTTService {
     console.log('unsubscribeFromRoom called - useMockService:', this.useMockService, ', client connected:', this.client?.connected);
     
     // Topic 构建规则：
-    // 1. 群聊 (group_ 开头): group_{name}/bound 格式
-    // 2. 私聊 (user_ 开头): 不需要退订特殊主题
-    // 3. 其他: chat/{roomId} 格式
+    // 群聊: group_{name} 或直接 {name} → group_{name}/bound 格式
+    // 私聊不需要退订特殊主题
     let topic: string;
     
     if (roomId.startsWith('group_')) {
-      // 群聊：转换为 group_xxx/bound 格式
       const groupName = roomId.substring(6);
       topic = `group_${groupName}/bound`;
     } else {
-      // 私聊和其他情况使用 chat 前缀
-      topic = `chat/${roomId}`;
+      topic = `group_${roomId}/bound`;
     }
     
     console.log('Final unsubscription topic will be:', topic);
@@ -360,41 +357,57 @@ class MQTTService {
       let groupName = '';
       if (roomId.startsWith('group_')) {
         groupName = roomId.substring(6);
-        topic = `group_${groupName}/bound`;
-      } else {
-        topic = `chat/${roomId}`;
       }
+      topic = `group_${groupName || roomId}/bound`;
       
       const message: Message = {
         id: Math.random().toString(36).substr(2, 9),
         text,
-        senderId: sender,
-        senderEmoji: this.userProperties.emoji,
+        senderId: this.clientId,
         timestamp: new Date(),
       };
       
       this.saveMessageToStorage(message, roomId);
       console.log('Publishing message to topic:', topic);
-      this.client.publish(topic, JSON.stringify(message));
+      this.client.publish(topic, JSON.stringify(message), {
+        properties: {
+          userProperties: {
+            name: this.userProperties.name,
+            description: this.userProperties.description,
+            emoji: this.userProperties.emoji,
+          },
+        },
+      });
       console.log('Published message to topic:', topic);
     } else {
-      // Wait a bit for the connection to establish, then try again
       console.log('MQTT client not connected, scheduling retry for sending message');
       setTimeout(() => {
         if (this.client && this.client.connected) {
           console.log('Retrying message send with real MQTT client');
-          const topic = `chat/${roomId}`;
+          let groupName = '';
+          if (roomId.startsWith('group_')) {
+            groupName = roomId.substring(6);
+          }
+          const topic = `group_${groupName || roomId}/bound`;
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             text,
-            senderId: sender,
+            senderId: this.clientId,
             senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
           };
           
           this.saveMessageToStorage(message, roomId);
           console.log('Publishing message to topic after retry:', topic);
-          this.client.publish(topic, JSON.stringify(message));
+          this.client.publish(topic, JSON.stringify(message), {
+            properties: {
+              userProperties: {
+                name: this.userProperties.name,
+                description: this.userProperties.description,
+                emoji: this.userProperties.emoji,
+              },
+            },
+          });
           console.log('Published message to topic after retry:', topic);
         } else {
           console.log('MQTT client still not connected, using mock service to send message');
@@ -546,7 +559,6 @@ class MQTTService {
         id: Math.random().toString(36).substr(2, 9),
         text,
         senderId: this.clientId,
-        senderEmoji: this.userProperties.emoji,
         timestamp: new Date(),
       };
       
@@ -595,6 +607,70 @@ class MQTTService {
           mockMQTTService.sendMessage(text, sender, targetRoom);
         }
       }, 500); // Wait 500ms before trying again
+    }
+  }
+
+  sendGroupInvite(members: string[], groupName: string): void {
+    console.log('sendGroupInvite called - members:', members, 'groupName:', groupName);
+    
+    const topic = `group_${groupName}/bound`;
+    
+    if (this.useMockService) {
+      console.log('Using mock service for group invite');
+      return;
+    }
+
+    if (this.client && this.client.connected) {
+      for (const memberId of members) {
+        if (memberId === this.clientId) continue;
+        
+        const inviteMessage = {
+          senderId: this.userProperties.name,
+          topic: topic,
+          kind: 'invite',
+          ts: Date.now(),
+        };
+        
+        console.log('Sending group invite to:', memberId, inviteMessage);
+        this.client.publish(`${memberId}/inbound`, JSON.stringify(inviteMessage), {
+          properties: {
+            userProperties: {
+              name: this.userProperties.name,
+              description: this.userProperties.description,
+              emoji: this.userProperties.emoji,
+              reply_to: `${this.clientId}/inbound`,
+            },
+          },
+        });
+      }
+    } else {
+      console.log('MQTT client not connected, scheduling retry for group invite');
+      setTimeout(() => {
+        if (this.client && this.client.connected) {
+          for (const memberId of members) {
+            if (memberId === this.clientId) continue;
+            
+            const inviteMessage = {
+              senderId: this.userProperties.name,
+              topic: topic,
+              kind: 'invite',
+              ts: Date.now(),
+            };
+            
+            console.log('Sending group invite after retry to:', memberId);
+            this.client.publish(`${memberId}/inbound`, JSON.stringify(inviteMessage), {
+              properties: {
+                userProperties: {
+                  name: this.userProperties.name,
+                  description: this.userProperties.description,
+                  emoji: this.userProperties.emoji,
+                  reply_to: `${this.clientId}/inbound`,
+                },
+              },
+            });
+          }
+        }
+      }, 500);
     }
   }
 

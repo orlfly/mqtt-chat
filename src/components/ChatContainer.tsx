@@ -5,6 +5,7 @@ import ChatMainContent from './ChatMainContent';
 import mqttService from '../services/mqttService';
 import emqxApiClient from '../services/emqxApiClient';
 import CreateGroupDialog from './CreateGroupDialog';
+import { useClients } from '../context/ClientContext';
 
 interface ChatRoomInfo {
   id: string;
@@ -22,9 +23,9 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
   const [loading, setLoading] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const hasFetchedData = useRef(false);
+  const { refreshClients } = useClients();
 
   useEffect(() => {
-    // Prevent duplicate API calls in React StrictMode
     if (hasFetchedData.current || !connectionSuccess) {
       return;
     }
@@ -33,21 +34,16 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
       setLoading(true);
       try {
         if (connectionSuccess) {
-          // Mark as fetched before starting API calls to prevent duplicate calls
           hasFetchedData.current = true;
           
-          // Get group chats from EMQX API
           const groupChats = await emqxApiClient.getGroupChats();
           
-          // 订阅所有群聊主题
           for (const groupName of groupChats) {
             mqttService.subscribeToRoom(groupName);
           }
           
-          // Get active users from EMQX API
           const users = await emqxApiClient.getUserList();
           
-          // Update client statuses in localStorage based on EMQX API data
           mqttService.updateClientStatusesFromEmqxApi(users);
           
           // Combine group chats and users from localStorage into a single list
@@ -104,11 +100,12 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
         ]);
       } finally {
         setLoading(false);
+        refreshClients();
       }
     };
 
     fetchData();
-  }, [connectionSuccess]);
+  }, [connectionSuccess, refreshClients]);
 
   // Function to add a new group chat to the list
   const addGroupChat = (groupName: string) => {
@@ -137,11 +134,11 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
 
   const handleCreateGroup = async (groupName: string, members: string[]) => {
     try {
-      // Add the new group to our local list
       addGroupChat(groupName);
       
-      // Subscribe to the group topic
       mqttService.subscribeToRoom(groupName);
+      
+      mqttService.sendGroupInvite(members, groupName);
       
       console.log('Group created successfully:', groupName, 'with members:', members);
     } catch (error) {

@@ -16,6 +16,7 @@ import SendIcon from '@mui/icons-material/Send';
 import PeopleIcon from '@mui/icons-material/People';
 import MenuIcon from '@mui/icons-material/Menu';
 import mqttService, { Message } from '../services/mqttService';
+import { useClients } from '../context/ClientContext';
 
 interface ChatRoomInfo {
   id: string;
@@ -34,8 +35,27 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
-  // 获取当前用户信息
+  const { clients } = useClients();
   const currentClientId = mqttService.clientId;
+  
+  // 根据 senderId 获取发送者名称
+  const getSenderName = (senderId: string): string => {
+    if (senderId === currentClientId) {
+      return mqttService.getUserInfo().name;
+    }
+    const client = clients.find(c => c.client_id === senderId);
+    return client?.name || senderId;
+  };
+  
+  // 根据 senderId 获取发送者 emoji
+  const getSenderEmoji = (senderId: string, msgEmoji?: string): string => {
+    if (senderId === currentClientId) {
+      return mqttService.getUserInfo().emoji;
+    }
+    if (msgEmoji) return msgEmoji;
+    const client = clients.find(c => c.client_id === senderId);
+    return client?.emoji || '👤';
+  };
 
   // Ensure input element receives focus when component mounts
   useEffect(() => {
@@ -60,6 +80,12 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     
     // Add message listener
     const handleMessage = (msg: Message) => {
+      // 过滤自己发送的消息（避免重复添加）
+      if (msg.senderId === currentClientId) {
+        console.log('[ChatMainContent] Skipping own message:', msg.id);
+        return;
+      }
+      
       setMessages(prev => {
         const exists = prev.some(m => m.id === msg.id);
         if (!exists) {
@@ -273,10 +299,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                     {/* 发送者信息：始终显示发送者名称和图标 */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                       <Typography variant="caption" sx={{ fontSize: '14px' }}>
-                        {message.senderEmoji || (isOwnMessage ? mqttService.getUserInfo().emoji : '👤')}
+                        {getSenderEmoji(message.senderId, message.senderEmoji)}
                       </Typography>
                       <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666' }}>
-                        {isOwnMessage ? mqttService.getUserInfo().name : message.senderId}
+                        {getSenderName(message.senderId)}
                       </Typography>
                     </Box>
                     <ListItemText

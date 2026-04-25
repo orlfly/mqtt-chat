@@ -6,7 +6,6 @@ import {
   ListItemIcon, 
   ListItemText, 
   Box, 
-  Typography,
   IconButton,
   Tooltip,
   TextField,
@@ -14,18 +13,14 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel
+  Button
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
-import PersonIcon from '@mui/icons-material/Person';
 import MenuIcon from '@mui/icons-material/Menu';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import './Sidebar.css';
 import CreateGroupDialog from './CreateGroupDialog';
+import { useClients } from '../context/ClientContext';
 
 const drawerWidth = 420; // 280 * 1.5
 const collapsedWidth = 90; // 60 * 1.5
@@ -54,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateGroup
 }) => {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const { clients } = useClients();
 
   const handleCreateGroupDialogOpen = () => {
     setCreateGroupOpen(true);
@@ -66,9 +62,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const handleCreateGroup = async (groupName: string, members: string[]) => {
     try {
       console.log('Creating group:', groupName, 'with members:', members);
-      // Add the new group to our local list
-      // Call the parent component's handler
-      // We'll pass the creation to the parent component
     } catch (error) {
       console.error('Failed to create group:', error);
     }
@@ -175,23 +168,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="rooms-list" style={{ flex: 1, overflow: 'auto' }}>
           <List>
             {rooms.map((room: ChatRoom) => {
-              // Extract client ID for user rooms to get online status from localStorage
-              let isOnline = true; // Default to true for group chats (群聊默认在线)
-              let clientEmoji = ''; // For user rooms with stored details
+              let isOnline = true;
+              let clientEmoji = '';
+              let displayName = room.name;
               
               if (!room.isGroup) {
-                // For user rooms (私聊), extract the client ID and check online status
                 const clientId = room.id.startsWith('user_') ? room.id.substring(5) : room.id;
-                const storedClientStr = localStorage.getItem(`client-${clientId}`);
+                const client = clients.find(c => c.client_id === clientId);
                 
-                if (storedClientStr) {
-                  try {
-                    const storedClient = JSON.parse(storedClientStr);
-                    isOnline = storedClient.online === true;
-                    clientEmoji = storedClient.emoji || '👤';
-                  } catch (e) {
-                    console.error(`Error parsing client details for ${clientId}:`, e);
-                  }
+                if (client) {
+                  isOnline = client.online === true;
+                  clientEmoji = client.emoji || '👤';
+                  displayName = client.name || room.name;
                 }
               }
 
@@ -209,16 +197,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                           backgroundColor: '#bbdefb',
                         }
                       },
-                      opacity: !room.isGroup && !isOnline ? 0.6 : 1, // Dim offline users
+                      opacity: !room.isGroup && !isOnline ? 0.6 : 1,
                     }}
                   >
                     <ListItemIcon sx={{ minWidth: 36, color: '#6b7280', fontSize: '20px' }}>
                       {room.isGroup ? <PeopleIcon /> : 
-                        <span style={{ fontSize: '20px' }}>{clientEmoji}</span>
+                        <span style={{ fontSize: '20px' }}>{clientEmoji || '👤'}</span>
                       }
                     </ListItemIcon>
                     <ListItemText 
-                      primary={room.name} 
+                      primary={displayName} 
                       secondary={room.isGroup ? '群聊' : isOnline ? '在线' : '离线'}
                       sx={{ 
                         '& .MuiListItemText-primary': { 
@@ -229,7 +217,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         },
                         '& .MuiListItemText-secondary': { 
                           fontSize: '12px',
-                          color: isOnline ? '#6b7280' : '#ccc' // Different color for offline status
+                          color: isOnline ? '#6b7280' : '#ccc'
                         } 
                       }}
                     />
@@ -246,29 +234,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="rooms-list-collapsed" style={{ flex: 1, overflow: 'auto' }}>
           <List>
             {rooms.map((room: ChatRoom) => {
-              // Extract client ID for user rooms to get online status from localStorage
-              let isOnline = true; // Default to true for group chats
+              let isOnline = true;
               let clientEmoji = '👤';
+              let displayName = room.name;
               
               if (!room.isGroup) {
-                // For user rooms, extract the client ID and check online status
                 const clientId = room.id.startsWith('user_') ? room.id.substring(5) : room.id;
-                const storedClientStr = localStorage.getItem(`client-${clientId}`);
+                const client = clients.find(c => c.client_id === clientId);
                 
-                if (storedClientStr) {
-                  try {
-                    const storedClient = JSON.parse(storedClientStr);
-                    isOnline = storedClient.online === true;
-                    clientEmoji = storedClient.emoji || '👤';
-                  } catch (e) {
-                    console.error(`Error parsing client details for ${clientId}:`, e);
-                  }
+                if (client) {
+                  isOnline = client.online === true;
+                  clientEmoji = client.emoji || '👤';
+                  displayName = client.name || room.name;
                 }
               }
 
               return (
                 <Tooltip 
-                  title={`${room.name} (${room.isGroup ? '群聊' : (isOnline ? '在线' : '离线')})`} 
+                  title={`${displayName} (${room.isGroup ? '群聊' : (isOnline ? '在线' : '离线')})`} 
                   placement="right" 
                   key={room.id}
                 >
@@ -286,12 +269,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                             backgroundColor: '#bbdefb',
                           }
                         },
-                        opacity: !room.isGroup && !isOnline ? 0.6 : 1, // Dim offline users in collapsed view too
+                        opacity: !room.isGroup && !isOnline ? 0.6 : 1,
                       }}
                     >
                       <ListItemIcon sx={{ 
                         minWidth: 'auto', 
-                        color: !room.isGroup && !isOnline ? '#ccc' : '#6b7280', // Gray out offline user icons
+                        color: !room.isGroup && !isOnline ? '#ccc' : '#6b7280',
                         justifyContent: 'center',
                         fontSize: '20px'
                       }}>
