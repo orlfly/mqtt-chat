@@ -49,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onCreateGroup
 }) => {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { clients } = useClients();
 
   const handleCreateGroupDialogOpen = () => {
@@ -66,6 +67,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       console.error('Failed to create group:', error);
     }
   };
+
+  const filteredRooms = rooms.filter((room: ChatRoom) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return room.name.toLowerCase().includes(query);
+  });
   return (
     <div 
       className="sidebar" 
@@ -99,6 +106,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 placeholder="搜索聊天..."
                 variant="outlined"
                 fullWidth
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 sx={{ 
                   mr: 1,
                   '& .MuiOutlinedInput-root': {
@@ -167,7 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {!isCollapsed && (
         <div className="rooms-list" style={{ flex: 1, overflow: 'auto' }}>
           <List>
-            {rooms.map((room: ChatRoom) => {
+            {filteredRooms.map((room: ChatRoom) => {
               let isOnline = true;
               let clientEmoji = '';
               let displayName = room.name;
@@ -233,7 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {isCollapsed && (
         <div className="rooms-list-collapsed" style={{ flex: 1, overflow: 'auto' }}>
           <List>
-            {rooms.map((room: ChatRoom) => {
+            {filteredRooms.map((room: ChatRoom) => {
               let isOnline = true;
               let clientEmoji = '👤';
               let displayName = room.name;
