@@ -139,13 +139,11 @@ class MQTTService {
               
               // 更新客户端详情
               if (name) {
-                // 使用消息中的senderId作为senderClientId
-                const senderClientId = msgData.senderId || msgData.sender;
+                const senderClientId = msgData.senderId;
                 
                 if (senderClientId) {
                   const existingDetails = this.getClientDetails(senderClientId);
                   if (existingDetails) {
-                    // 检查name是否不同
                     if (existingDetails.name !== name) {
                       console.log('[connectWithUserProperties] Updating client details for:', senderClientId);
                       this.storeClientDetails(senderClientId, {
@@ -156,7 +154,6 @@ class MQTTService {
                       });
                     }
                   } else {
-                    // 如果客户端详情不存在，创建新的
                     console.log('[connectWithUserProperties] Creating new client details for:', senderClientId);
                     this.storeClientDetails(senderClientId, {
                       name: name,
@@ -170,6 +167,24 @@ class MQTTService {
             }
             
             console.log('[connectWithUserProperties] Parsed message:', parsedMessage);
+            
+            // 保存消息到 localStorage
+            // 判断是私聊消息还是群聊消息
+            let roomIdForStorage: string;
+            if (topic.startsWith('group_')) {
+              // 群聊消息: 从 topic 提取 group name
+              const match = topic.match(/^group_(.+)\/bound$/);
+              if (match) {
+                roomIdForStorage = `group_${match[1]}`;
+              } else {
+                roomIdForStorage = `group_${topic}`;
+              }
+            } else {
+              // 私聊消息: 使用发送者的 clientId 作为 roomId
+              roomIdForStorage = `user_${parsedMessage.senderId}`;
+            }
+            this.saveMessageToStorage(parsedMessage, roomIdForStorage);
+            
             this.notifyMessageListeners(parsedMessage);
           } catch (error) {
             console.error('[connectWithUserProperties] Error parsing message:', error);
@@ -341,15 +356,12 @@ class MQTTService {
     if (this.client && this.client.connected) {
       console.log('Using real MQTT client for sending message');
       
-      // 只处理群聊：group_xxx/bound 格式
-      // 私聊使用 sendPrivateMessage 方法
       let topic;
+      let groupName = '';
       if (roomId.startsWith('group_')) {
-        // 群聊：转换为 group_xxx/bound 格式
-        const groupName = roomId.substring(6);
+        groupName = roomId.substring(6);
         topic = `group_${groupName}/bound`;
       } else {
-        // 其他情况（不应该走到这里，私聊不走 sendMessage）
         topic = `chat/${roomId}`;
       }
       
@@ -357,9 +369,11 @@ class MQTTService {
         id: Math.random().toString(36).substr(2, 9),
         text,
         senderId: sender,
+        senderEmoji: this.userProperties.emoji,
         timestamp: new Date(),
       };
       
+      this.saveMessageToStorage(message, roomId);
       console.log('Publishing message to topic:', topic);
       this.client.publish(topic, JSON.stringify(message));
       console.log('Published message to topic:', topic);
@@ -374,9 +388,11 @@ class MQTTService {
             id: Math.random().toString(36).substr(2, 9),
             text,
             senderId: sender,
+            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
           };
           
+          this.saveMessageToStorage(message, roomId);
           console.log('Publishing message to topic after retry:', topic);
           this.client.publish(topic, JSON.stringify(message));
           console.log('Published message to topic after retry:', topic);
@@ -530,9 +546,11 @@ class MQTTService {
         id: Math.random().toString(36).substr(2, 9),
         text,
         senderId: this.clientId,
+        senderEmoji: this.userProperties.emoji,
         timestamp: new Date(),
       };
       
+      this.saveMessageToStorage(message, targetRoom);
       console.log('Sending private message:', message);
       this.client.publish(topic, JSON.stringify(message), {
         properties: {
@@ -555,9 +573,11 @@ class MQTTService {
             id: Math.random().toString(36).substr(2, 9),
             text,
             senderId: this.clientId,
+            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
           };
           
+          this.saveMessageToStorage(message, targetRoom);
           console.log('Sending private message after retry:', message);
           this.client.publish(topic, JSON.stringify(message), {
             properties: {
@@ -595,6 +615,103 @@ class MQTTService {
       console.log('Disconnecting from real MQTT broker');
       this.client.end();
       console.log('Disconnected from MQTT broker');
+    }
+  }
+
+  // LocalStorage storage methods for messages
+  private getMessageStorageKey(msgId: string): string {
+    return `msg-${msgId}`;
+  }
+
+  private getPrivateMessageListKey(clientId: string): string {
+    return `message-${clientId}`;
+  }
+
+  private getGroupMessageListKey(groupName: string): string {
+    return `group-message-${groupName}`;
+  }
+
+  saveMessageToStorage(msg: Message, roomId: string): void {
+    try {
+      const msgKey = this.getMessageStorageKey(msg.id);
+      localStorage.setItem(msgKey, JSON.stringify(msg));
+
+      let listKey: string;
+      if (roomId.startsWith('group_')) {
+        const groupName = roomId.substring(6);
+        listKey = this.getGroupMessageListKey(groupName);
+      } else {
+        const clientId = roomId.startsWith('user_') ? roomId.substring(5) : roomId;
+        listKey = this.getPrivateMessageListKey(clientId);
+      }
+
+      const listStr = localStorage.getItem(listKey);
+      let msgIds: string[] = listStr ? JSON.parse(listStr) : [];
+      if (!msgIds.includes(msg.id)) {
+        msgIds.push(msg.id);
+        localStorage.setItem(listKey, JSON.stringify(msgIds));
+      }
+      console.log('[Storage] Saved message:', msg.id, 'to list:', listKey);
+    } catch (error) {
+      console.error('[Storage] Error saving message:', error);
+    }
+  }
+
+  loadMessagesFromStorage(roomId: string): Message[] {
+    try {
+      let listKey: string;
+      if (roomId.startsWith('group_')) {
+        const groupName = roomId.substring(6);
+        listKey = this.getGroupMessageListKey(groupName);
+      } else {
+        const clientId = roomId.startsWith('user_') ? roomId.substring(5) : roomId;
+        listKey = this.getPrivateMessageListKey(clientId);
+      }
+
+      const listStr = localStorage.getItem(listKey);
+      if (!listStr) {
+        console.log('[Storage] No messages found for room:', roomId);
+        return [];
+      }
+
+      const msgIds: string[] = JSON.parse(listStr);
+      const messages: Message[] = [];
+
+      for (const msgId of msgIds) {
+        const msgStr = localStorage.getItem(this.getMessageStorageKey(msgId));
+        if (msgStr) {
+          try {
+            const msg = JSON.parse(msgStr);
+            msg.timestamp = new Date(msg.timestamp);
+            messages.push(msg);
+          } catch (e) {
+            console.error('[Storage] Error parsing message:', msgId, e);
+          }
+        }
+      }
+
+      console.log('[Storage] Loaded', messages.length, 'messages for room:', roomId);
+      return messages;
+    } catch (error) {
+      console.error('[Storage] Error loading messages:', error);
+      return [];
+    }
+  }
+
+  clearMessagesForRoom(roomId: string): void {
+    try {
+      let listKey: string;
+      if (roomId.startsWith('group_')) {
+        const groupName = roomId.substring(6);
+        listKey = this.getGroupMessageListKey(groupName);
+      } else {
+        const clientId = roomId.startsWith('user_') ? roomId.substring(5) : roomId;
+        listKey = this.getPrivateMessageListKey(clientId);
+      }
+      localStorage.setItem(listKey, JSON.stringify([]));
+      console.log('[Storage] Cleared messages for room:', roomId);
+    } catch (error) {
+      console.error('[Storage] Error clearing messages:', error);
     }
   }
 }

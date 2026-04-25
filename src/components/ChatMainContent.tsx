@@ -48,12 +48,19 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   useEffect(() => {
     if (!selectedRoom) return;
 
-    // 只添加消息监听器，群聊订阅在初始化时已完成
+    // 清空消息列表
+    setMessages([]);
+    
+    // 从 localStorage 加载历史消息
+    const storedMessages = mqttService.loadMessagesFromStorage(selectedRoom.id);
+    if (storedMessages.length > 0) {
+      console.log('[ChatMainContent] Loaded', storedMessages.length, 'messages from storage');
+      setMessages(storedMessages);
+    }
     
     // Add message listener
     const handleMessage = (msg: Message) => {
       setMessages(prev => {
-        // Prevent duplicate messages
         const exists = prev.some(m => m.id === msg.id);
         if (!exists) {
           return [...prev, msg];
@@ -64,9 +71,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
 
     mqttService.addMessageListener(handleMessage);
 
-    // Cleanup on unmount
     return () => {
-      // 只移除消息监听器，不退订主题
       mqttService.removeMessageListener(handleMessage);
     };
   }, [selectedRoom]); // Only depend on id to prevent endless re-subscriptions
