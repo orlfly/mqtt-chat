@@ -1,14 +1,29 @@
 // Mock MQTT service for testing without a real broker
 import { Message } from './mqttService';
 
+interface MockUserProperties {
+  name?: string;
+  description?: string;
+  emoji?: string;
+  reply_to?: string;
+}
+
 class MockMQTTService {
   private messageListeners: Array<(message: Message) => void> = [];
   private subscriptions: Set<string> = new Set();
+  private userProperties: MockUserProperties = {
+    name: '',
+    description: '',
+    emoji: '👤',
+  };
 
   async connect(): Promise<void> {
     console.log('Mock MQTT service connected');
-    // Simulate connection success after a short delay
     return new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  setUserProperties(props: MockUserProperties): void {
+    this.userProperties = { ...this.userProperties, ...props };
   }
 
   subscribeToRoom(roomId: string): void {
@@ -21,18 +36,20 @@ class MockMQTTService {
     console.log(`Mock unsubscribed from room: ${roomId}`);
   }
 
-  sendMessage(text: string, sender: string, roomId: string): void {
-    // Create a simulated message
+  sendMessage(text: string, sender: string, roomId: string, userProps?: MockUserProperties): void {
+    const props = userProps || this.userProperties;
     const message: Message = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text,
-      sender,
+      senderId: props.name || sender,
       timestamp: new Date(),
+      senderDescription: props.description,
+      senderEmoji: props.emoji,
+      replyTo: props.reply_to,
     };
     
     console.log(`Mock message sent to room ${roomId}:`, message);
     
-    // Simulate broadcasting to other clients after a short delay
     setTimeout(() => {
       this.notifyMessageListeners(message);
     }, 100);
@@ -57,13 +74,16 @@ class MockMQTTService {
     console.log('Mock MQTT service disconnected');
   }
 
-  // Method to simulate receiving a message from "another user"
-  simulateIncomingMessage(text: string, sender: string, roomId: string): void {
+  simulateIncomingMessage(text: string, sender: string, roomId: string, userProps?: MockUserProperties): void {
+    const props = userProps || this.userProperties;
     const message: Message = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       text,
-      sender,
+      senderId: props.name || sender,
       timestamp: new Date(),
+      senderDescription: props.description,
+      senderEmoji: props.emoji,
+      replyTo: props.reply_to,
     };
     
     console.log(`Mock incoming message to room ${roomId}:`, message);
@@ -71,6 +91,5 @@ class MockMQTTService {
   }
 }
 
-// Export a singleton instance
 const mockMQTTService = new MockMQTTService();
 export default mockMQTTService;

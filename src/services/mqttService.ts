@@ -6,8 +6,11 @@ import appConfig from '../config/appConfig';
 interface Message {
   id: string;
   text: string;
-  sender: string;
+  senderId: string;
   timestamp: Date;
+  senderDescription?: string;
+  senderEmoji?: string;
+  replyTo?: string;
 }
 
 interface ClientDetail {
@@ -22,6 +25,7 @@ interface UserProperties {
   name: string;
   description: string;
   emoji: string;
+  reply_to?: string;
 }
 
 class MQTTService {
@@ -36,6 +40,14 @@ class MQTTService {
     description: '负责将人类接入智能体社区',
     emoji: '👤'
   };
+  
+  // Get user properties for display
+  getUserInfo(): { name: string; emoji: string } {
+    return {
+      name: this.userProperties.name,
+      emoji: this.userProperties.emoji
+    };
+  }
   
   async connectWithUserProperties(): Promise<void> {
     if (this.hasConnectedOnce && this.client?.connected) {
@@ -88,17 +100,75 @@ class MQTTService {
           resolve();
         });
 
-        this.client?.on('message', (topic, message) => {
+        this.client?.on('message', (topic, message, packet) => {
           console.log('[connectWithUserProperties] Received message on topic:', topic);
           console.log('[connectWithUserProperties] Raw message:', message.toString());
+          console.log('[connectWithUserProperties] Packet:', packet);
           try {
             const msgData = JSON.parse(message.toString());
+            
+            // 解析消息体
             const parsedMessage: Message = {
               id: msgData.id || Math.random().toString(36).substr(2, 9),
               text: msgData.text,
-              sender: msgData.sender,
+              senderId: msgData.senderId,
               timestamp: new Date(msgData.timestamp || Date.now()),
             };
+            
+            // 解析 userProperties
+            const userProperties = packet.properties?.userProperties;
+            if (userProperties) {
+              console.log('[connectWithUserProperties] User properties:', userProperties);
+              const name = Array.isArray(userProperties.name) ? userProperties.name[0] : userProperties.name;
+              const description = Array.isArray(userProperties.description) ? userProperties.description[0] : userProperties.description;
+              const emoji = Array.isArray(userProperties.emoji) ? userProperties.emoji[0] : userProperties.emoji;
+              const reply_to = Array.isArray(userProperties.reply_to) ? userProperties.reply_to[0] : userProperties.reply_to;
+              
+              if (name) {
+                parsedMessage.senderId = parsedMessage.senderId || name;
+              }
+              if (description) {
+                parsedMessage.senderDescription = description;
+              }
+              if (emoji) {
+                parsedMessage.senderEmoji = emoji;
+              }
+              if (reply_to) {
+                parsedMessage.replyTo = reply_to;
+              }
+              
+              // 更新客户端详情
+              if (name) {
+                // 使用消息中的senderId作为senderClientId
+                const senderClientId = msgData.senderId || msgData.sender;
+                
+                if (senderClientId) {
+                  const existingDetails = this.getClientDetails(senderClientId);
+                  if (existingDetails) {
+                    // 检查name是否不同
+                    if (existingDetails.name !== name) {
+                      console.log('[connectWithUserProperties] Updating client details for:', senderClientId);
+                      this.storeClientDetails(senderClientId, {
+                        name: name,
+                        description: description || existingDetails.description,
+                        emoji: emoji || existingDetails.emoji,
+                        online: existingDetails.online
+                      });
+                    }
+                  } else {
+                    // 如果客户端详情不存在，创建新的
+                    console.log('[connectWithUserProperties] Creating new client details for:', senderClientId);
+                    this.storeClientDetails(senderClientId, {
+                      name: name,
+                      description: description || '',
+                      emoji: emoji || '👤',
+                      online: true
+                    });
+                  }
+                }
+              }
+            }
+            
             console.log('[connectWithUserProperties] Parsed message:', parsedMessage);
             this.notifyMessageListeners(parsedMessage);
           } catch (error) {
@@ -155,13 +225,18 @@ class MQTTService {
   subscribeToRoom(roomId: string): void {
     console.log('subscribeToRoom called - useMockService:', this.useMockService, ', client connected:', this.client?.connected, 'Room ID:', roomId);
     
-    // Determine if this is a special topic format (contains '/')
-    // If roomId contains '/', use it directly as the full topic
-    // Otherwise, treat it as a regular room and prepend 'chat/'
+    // Topic 构建规则：
+    // 1. 群聊 (group_ 开头): group_{name}/bound 格式
+    // 2. 私聊 (user_ 开头): 不需要订阅特殊主题，私聊通过入站主题接收
+    // 3. 其他: chat/{roomId} 格式
     let topic: string;
-    if (roomId.includes('/')) {
-      topic = roomId;
+    
+    if (roomId.startsWith('group_')) {
+      // 群聊：转换为 group_xxx/bound 格式
+      const groupName = roomId.substring(6);
+      topic = `group_${groupName}/bound`;
     } else {
+      // 私聊不需要订阅特殊主题，其他情况使用 chat 前缀
       topic = `chat/${roomId}`;
     }
     
@@ -211,13 +286,18 @@ class MQTTService {
   unsubscribeFromRoom(roomId: string): void {
     console.log('unsubscribeFromRoom called - useMockService:', this.useMockService, ', client connected:', this.client?.connected);
     
-    // Determine if this is a special topic format (contains '/')
-    // If roomId contains '/', use it directly as the full topic
-    // Otherwise, treat it as a regular room and prepend 'chat/'
+    // Topic 构建规则：
+    // 1. 群聊 (group_ 开头): group_{name}/bound 格式
+    // 2. 私聊 (user_ 开头): 不需要退订特殊主题
+    // 3. 其他: chat/{roomId} 格式
     let topic: string;
-    if (roomId.includes('/')) {
-      topic = roomId;
+    
+    if (roomId.startsWith('group_')) {
+      // 群聊：转换为 group_xxx/bound 格式
+      const groupName = roomId.substring(6);
+      topic = `group_${groupName}/bound`;
     } else {
+      // 私聊和其他情况使用 chat 前缀
       topic = `chat/${roomId}`;
     }
     
@@ -260,15 +340,29 @@ class MQTTService {
 
     if (this.client && this.client.connected) {
       console.log('Using real MQTT client for sending message');
-      const topic = `chat/${roomId}`;
+      
+      // 只处理群聊：group_xxx/bound 格式
+      // 私聊使用 sendPrivateMessage 方法
+      let topic;
+      if (roomId.startsWith('group_')) {
+        // 群聊：转换为 group_xxx/bound 格式
+        const groupName = roomId.substring(6);
+        topic = `group_${groupName}/bound`;
+      } else {
+        // 其他情况（不应该走到这里，私聊不走 sendMessage）
+        topic = `chat/${roomId}`;
+      }
+      
       const message: Message = {
         id: Math.random().toString(36).substr(2, 9),
         text,
-        sender,
+        senderId: sender,
         timestamp: new Date(),
       };
       
+      console.log('Publishing message to topic:', topic);
       this.client.publish(topic, JSON.stringify(message));
+      console.log('Published message to topic:', topic);
     } else {
       // Wait a bit for the connection to establish, then try again
       console.log('MQTT client not connected, scheduling retry for sending message');
@@ -279,11 +373,13 @@ class MQTTService {
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             text,
-            sender,
+            senderId: sender,
             timestamp: new Date(),
           };
           
+          console.log('Publishing message to topic after retry:', topic);
           this.client.publish(topic, JSON.stringify(message));
+          console.log('Published message to topic after retry:', topic);
         } else {
           console.log('MQTT client still not connected, using mock service to send message');
           mockMQTTService.sendMessage(text, sender, roomId);
@@ -398,7 +494,7 @@ class MQTTService {
         this.storeClientDetails(clientId, {
           name: emqxClient.clientId,
           description: '',
-          emoji: '',
+          emoji: '👤',
           online: true,
         });
       }
@@ -433,7 +529,7 @@ class MQTTService {
       const message: Message = {
         id: Math.random().toString(36).substr(2, 9),
         text,
-        sender,
+        senderId: this.clientId,
         timestamp: new Date(),
       };
       
@@ -458,7 +554,7 @@ class MQTTService {
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             text,
-            sender,
+            senderId: this.clientId,
             timestamp: new Date(),
           };
           

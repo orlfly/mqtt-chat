@@ -58,7 +58,7 @@ function App() {
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', backgroundColor: '#f1f1f1' }}>
-      <ChatLayout connectionSuccess={connectionSuccess} />
+      <ChatLayout connectionSuccess={connectionSuccess || false} />
     </Box>
   );
 }

@@ -41,10 +41,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
 
   // Subscribe to MQTT room and handle messages
   useEffect(() => {
-    console.log('ChatRoom useEffect: About to subscribe to room:', room.id, 'Room info:', room, 'Client ID:', mqttService.clientId);
+    console.log('ChatRoom useEffect: Room ID:', room.id, 'Client ID:', mqttService.clientId);
     
-    // Subscribe to the room when component mounts
-    mqttService.subscribeToRoom(room.id);
+    // 只添加消息监听器，群聊订阅在创建群聊时已完成
+    // 私聊通过连接时自动订阅的入站主题接收
     
     // Add message listener
     const handleMessage = (msg: Message) => {
@@ -67,9 +67,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ room }) => {
     mqttService.addMessageListener(handleMessage);
 
     // Cleanup on unmount
+    // 注意：这里只移除消息监听器，不退订主题
+    // 群聊在创建时订阅，私聊在连接时自动订阅入站主题
     return () => {
-      console.log('ChatRoom cleanup: Unsubscribing from room:', room.id);
-      mqttService.unsubscribeFromRoom(room.id);
+      console.log('ChatRoom cleanup: Removing message listener for room:', room.id);
       mqttService.removeMessageListener(handleMessage);
     };
   }, [room.id]); // Only depend on id to prevent endless re-subscriptions
@@ -93,7 +94,7 @@ const handleSendMessage = async () => {
       const localMessage = {
         id: Math.random().toString(36).substr(2, 9),
         text: inputValue,
-        sender: 'You',
+        senderId: mqttService.clientId || '',
         timestamp: new Date(),
       };
       
@@ -101,18 +102,19 @@ const handleSendMessage = async () => {
       setMessages(prev => [...prev, localMessage]);
       
       console.log('About to send message - Room info:', room);
+      console.log('Room ID:', room.id);
       console.log('Is group chat?', room.isGroup);
       
       // Check if this is a private message (user chat) or group chat
       if (room.isGroup) {
         // Send group message via MQTT service
-        console.log('Sending group message to room:', room.id);
+        console.log('Sending group message (sendMessage) to room:', room.id);
         await mqttService.sendMessage(inputValue, 'You', room.id);
       } else {
         // For private messages, extract the target client ID from the room ID
         // Room ID format for users is 'user_{clientId}'
         const targetClientId = room.id.startsWith('user_') ? room.id.substring(5) : room.id;
-        console.log('Sending private message to client:', targetClientId, 'Room ID:', room.id);
+        console.log('Sending private message (sendPrivateMessage) to client:', targetClientId, 'Room ID:', room.id);
         
         // Send private message to the specific user's inbound topic
         await mqttService.sendPrivateMessage(inputValue, mqttService.clientId || 'You', targetClientId, room.id);
@@ -222,7 +224,7 @@ const handleSendMessage = async () => {
                 key={message.id}
                 sx={{ 
                   display: 'flex', 
-                  justifyContent: message.sender === 'You' ? 'flex-end' : 'flex-start',
+                  justifyContent: message.senderId === mqttService.clientId ? 'flex-end' : 'flex-start',
                   padding: '4px 0'
                 }}
               >
@@ -230,14 +232,15 @@ const handleSendMessage = async () => {
                   sx={{
                     maxWidth: '70%',
                     borderRadius: 2,
-                    bgcolor: message.sender === 'You' ? '#d9fdd3' : '#ffffff',
-                    border: message.sender === 'You' ? 'none' : '1px solid #e0e0e0',
+                    bgcolor: message.senderId === mqttService.clientId ? '#d9fdd3' : '#ffffff',
+                    border: message.senderId === mqttService.clientId ? 'none' : '1px solid #e0e0e0',
                     p: 1.5,
                   }}
                 >
-                  {room.isGroup && message.sender !== 'You' && (
-                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666', display: 'block' }}>
-                      {message.sender}
+                  {room.isGroup && message.senderId !== mqttService.clientId && (
+                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <span style={{ fontSize: '14px' }}>{message.senderEmoji || '👤'}</span>
+                      {message.senderId}
                     </Typography>
                   )}
                   <ListItemText
@@ -258,7 +261,7 @@ const handleSendMessage = async () => {
                       mb: 0,
                       '& .MuiListItemText-secondary': {
                         fontSize: '0.7rem',
-                        textAlign: message.sender === 'You' ? 'right' : 'left'
+                        textAlign: message.senderId === mqttService.clientId ? 'right' : 'left'
                       }
                     }}
                   />

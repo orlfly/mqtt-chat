@@ -15,7 +15,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ connectionSuccess }) => {
       backgroundColor: '#f2f2f2',
       overflow: 'hidden'
     }}>
-      <ChatContainer connectionSuccess={connectionSuccess} />
+      <ChatContainer connectionSuccess={connectionSuccess || false} />
     </Box>
   );
 };

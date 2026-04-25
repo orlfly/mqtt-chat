@@ -33,6 +33,9 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // 获取当前用户信息
+  const currentClientId = mqttService.clientId;
 
   // Ensure input element receives focus when component mounts
   useEffect(() => {
@@ -45,8 +48,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   useEffect(() => {
     if (!selectedRoom) return;
 
-    // Subscribe to the room when component mounts
-    mqttService.subscribeToRoom(selectedRoom.id);
+    // 只添加消息监听器，群聊订阅在初始化时已完成
     
     // Add message listener
     const handleMessage = (msg: Message) => {
@@ -64,9 +66,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
 
     // Cleanup on unmount
     return () => {
-      if (selectedRoom) {
-        mqttService.unsubscribeFromRoom(selectedRoom.id);
-      }
+      // 只移除消息监听器，不退订主题
       mqttService.removeMessageListener(handleMessage);
     };
   }, [selectedRoom]); // Only depend on id to prevent endless re-subscriptions
@@ -118,11 +118,46 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     setIsLoading(true);
     
     try {
-      // Send message via MQTT service
-      await mqttService.sendMessage(inputValue, 'You', selectedRoom.id);
+      // 1. 创建本地消息对象并立即显示（乐观更新）
+      const userInfo = mqttService.getUserInfo();
+      const localMessage = {
+        id: Math.random().toString(36).substr(2, 9),
+        text: inputValue,
+        senderId: mqttService.clientId || '',
+        senderEmoji: userInfo.emoji,
+        timestamp: new Date(),
+      };
+      
+      // 添加到本地消息列表（立即显示）
+      setMessages(prev => [...prev, localMessage]);
+      
+      console.log('ChatMainContent handleSendMessage - Room ID:', selectedRoom.id);
+      console.log('ChatMainContent handleSendMessage - isGroup:', selectedRoom.isGroup);
+      
+      // 根据房间类型选择发送方法
+      if (selectedRoom.isGroup) {
+        // 群聊：调用 sendMessage
+        console.log('Sending group message (sendMessage) to room:', selectedRoom.id);
+        await mqttService.sendMessage(inputValue, 'You', selectedRoom.id);
+      } else {
+        // 私聊：提取目标客户端ID并调用 sendPrivateMessage
+        const targetClientId = selectedRoom.id.startsWith('user_') 
+          ? selectedRoom.id.substring(5) 
+          : selectedRoom.id;
+        console.log('Sending private message (sendPrivateMessage) to client:', targetClientId);
+        await mqttService.sendPrivateMessage(
+          inputValue, 
+          mqttService.clientId || 'You', 
+          targetClientId, 
+          selectedRoom.id
+        );
+      }
+      
       setInputValue('');
     } catch (error) {
       console.error('Failed to send message:', error);
+      // 发送失败，移除本地消息
+      setMessages(prev => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
     }
@@ -209,30 +244,37 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
               <Typography variant="body2">No messages yet</Typography>
             </Box>
           ) : (
-            messages.map((message) => (
-              <ListItem 
-                key={message.id}
-                sx={{ 
-                  display: 'flex', 
-                  justifyContent: message.sender === 'You' ? 'flex-end' : 'flex-start',
-                  padding: 0.5
-                }}
-              >
-                <Box
-                  sx={{
-                    maxWidth: { xs: '85%', sm: '80%', md: '75%' },
-                    borderRadius: 2,
-                    bgcolor: message.sender === 'You' ? '#d9fdd3' : '#ffffff',
-                    border: message.sender === 'You' ? 'none' : '1px solid #e0e0e0',
-                    p: 1.5,
+            messages.map((message) => {
+              const isOwnMessage = message.senderId === currentClientId;
+              return (
+                <ListItem 
+                  key={message.id}
+                  sx={{ 
+                    display: 'flex', 
+                    justifyContent: isOwnMessage ? 'flex-end' : 'flex-start',
+                    padding: 0.5,
+                    alignItems: 'flex-start'
                   }}
                 >
-                  {selectedRoom.isGroup && message.sender !== 'You' && (
-                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666', display: 'block' }}>
-                      {message.sender}
-                    </Typography>
-                  )}
-                  <ListItemText
+                  <Box
+                    sx={{
+                      maxWidth: { xs: '85%', sm: '80%', md: '75%' },
+                      borderRadius: 2,
+                      bgcolor: isOwnMessage ? '#d9ffd3' : '#f5f5f5',
+                      border: isOwnMessage ? 'none' : '1px solid #e0e0e0',
+                      p: 1.5,
+                    }}
+                  >
+                    {/* 发送者信息：始终显示发送者名称和图标 */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontSize: '14px' }}>
+                        {message.senderEmoji || (isOwnMessage ? mqttService.getUserInfo().emoji : '👤')}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666' }}>
+                        {isOwnMessage ? mqttService.getUserInfo().name : message.senderId}
+                      </Typography>
+                    </Box>
+                    <ListItemText
                     primary={
                       markedModule ? (
                         <div 
@@ -251,13 +293,14 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                       mb: 0.5,
                       '& .MuiListItemText-secondary': {
                         fontSize: '0.7rem',
-                        textAlign: message.sender === 'You' ? 'right' : 'left'
+                        textAlign: isOwnMessage ? 'right' : 'left'
                       }
                     }}
                   />
                 </Box>
               </ListItem>
-            ))
+              );
+            })
           )}
           <div ref={messagesEndRef} />
         </List>

@@ -254,18 +254,18 @@ class EMQXApiService {
     }
   }
 
-  // Get group chats by filtering topics that match the room_*/*/bound pattern
+  // Get group chats by filtering topics that match the group_*/*/bound pattern
   async getGroupChats(): Promise<string[]> {
     try {
       const topics = await this.getAllTopics();
-      // Regular expression to match topics with pattern: room_*/bound (without the chat/ prefix)
-      const groupTopicRegex = /^room_([^/]+)\/bound$/;
+      // Regular expression to match topics with pattern: group_*/bound (without the chat/ prefix)
+      const groupTopicRegex = /^group_([^/]+)\/bound$/;
       const groupRooms: string[] = [];
 
       for (const topic of topics) {
         const match = topic.match(groupTopicRegex);
         if (match) {
-          // Extract the room name which is between 'room_' and '/bound'
+          // Extract the room name which is between 'group_' and '/bound'
           groupRooms.push(match[1]);
         }
       }
