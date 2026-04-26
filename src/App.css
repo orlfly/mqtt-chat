@@ -41,3 +41,61 @@
   background-color: #ffffff;
   color: #333;
 }
+
+/* Markdown content styles */
+.markdown-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.markdown-content p {
+  margin: 0 0 0.5em 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.markdown-content code {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  background-color: #f0f0f0;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.markdown-content pre {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  background-color: #f0f0f0;
+  padding: 0.5em;
+  border-radius: 3px;
+  overflow-x: auto;
+}
+
+.markdown-content a {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.markdown-content ul, .markdown-content ol {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-content li {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.markdown-content blockquote {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}

@@ -12,6 +12,7 @@ interface Message {
   senderDescription?: string;
   senderEmoji?: string;
   replyTo?: string;
+  targetIds?: string[];
 }
 
 interface ClientDetail {
@@ -345,7 +346,7 @@ class MQTTService {
     }
   }
 
-  sendMessage(text: string, sender: string, roomId: string): void {
+  sendMessage(text: string, sender: string, roomId: string, targetIds?: string[]): void {
     console.log('sendMessage called - useMockService:', this.useMockService, ', client connected:', this.client?.connected);
     
     if (this.useMockService) {
@@ -369,6 +370,7 @@ class MQTTService {
         text,
         senderId: this.clientId,
         timestamp: new Date(),
+        targetIds: targetIds || [],
       };
       
       this.saveMessageToStorage(message, roomId);
@@ -399,6 +401,7 @@ class MQTTService {
             senderId: this.clientId,
             senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
+            targetIds: targetIds || [],
           };
           
           this.saveMessageToStorage(message, roomId);

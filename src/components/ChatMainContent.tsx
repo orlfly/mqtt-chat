@@ -7,11 +7,17 @@ import {
   Typography, 
   List, 
   ListItem, 
+  ListItemButton,
   ListItemText,
   CircularProgress,
-  InputAdornment
+  InputAdornment,
+  Popover,
+  Chip,
+  Tooltip,
+  Button
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import DeleteIcon from '@mui/icons-material/Delete';
 import PeopleIcon from '@mui/icons-material/People';
 import mqttService, { Message } from '../services/mqttService';
 import { useClients } from '../context/ClientContext';
@@ -32,6 +38,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  const [mentionAnchor, setMentionAnchor] = useState<HTMLElement | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   
   const { clients } = useClients();
   const currentClientId = mqttService.clientId;
@@ -121,14 +131,14 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const parseMarkdown = (text: string) => {
     if (markedModule && markedModule.default && typeof markedModule.default.parse === 'function') {
       try {
-        return markedModule.default.parse(text || '');
+        return markedModule.default.parse(text || '', { breaks: true });
       } catch (error) {
         console.error('Error parsing markdown:', error);
         return text || '';
       }
     } else if (markedModule && markedModule.marked) {
       try {
-        return markedModule.marked(text || '');
+        return markedModule.marked(text || '', { breaks: true });
       } catch (error) {
         console.error('Error parsing markdown:', error);
         return text || '';
@@ -139,6 +149,20 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const extractMentionedClientIds = (): string[] => {
+    const mentions: string[] = [];
+    const regex = /@(\S+)/g;
+    let match;
+    while ((match = regex.exec(inputValue)) !== null) {
+      const mentionedName = match[1].toLowerCase();
+      const client = clients.find(c => c.name.toLowerCase() === mentionedName);
+      if (client) {
+        mentions.push(client.client_id);
+      }
+    }
+    return mentions;
   };
 
   const handleSendMessage = async () => {
@@ -165,9 +189,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
       
       // 根据房间类型选择发送方法
       if (selectedRoom.isGroup) {
-        // 群聊：调用 sendMessage
-        console.log('Sending group message (sendMessage) to room:', selectedRoom.id);
-        await mqttService.sendMessage(inputValue, 'You', selectedRoom.id);
+        // 群聊：提取 @mentions 获取 targetIds
+        const targetIds = extractMentionedClientIds();
+        console.log('Sending group message (sendMessage) to room:', selectedRoom.id, 'targetIds:', targetIds);
+        await mqttService.sendMessage(inputValue, 'You', selectedRoom.id, targetIds);
       } else {
         // 私聊：提取目标客户端ID并调用 sendPrivateMessage
         const targetClientId = selectedRoom.id.startsWith('user_') 
@@ -196,6 +221,71 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const getUsedMentionNames = (): string[] => {
+    const mentions: string[] = [];
+    const regex = /@(\S+)/g;
+    let match;
+    while ((match = regex.exec(inputValue)) !== null) {
+      mentions.push(match[1].toLowerCase());
+    }
+    return mentions;
+  };
+
+  const getFilteredClients = () => {
+    const usedNames = getUsedMentionNames();
+    if (!mentionQuery.trim()) {
+      return clients.filter(client => !usedNames.includes(client.name.toLowerCase()));
+    }
+    const query = mentionQuery.toLowerCase();
+    return clients.filter(client => 
+      !usedNames.includes(client.name.toLowerCase()) &&
+      (client.name.toLowerCase().includes(query) || 
+      client.client_id.toLowerCase().includes(query))
+    );
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    
+    if (selectedRoom?.isGroup) {
+      const cursorPos = e.target.selectionStart || 0;
+      const textBeforeCursor = value.slice(0, cursorPos);
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+      
+      if (lastAtIndex !== -1) {
+        const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
+        if (!textAfterAt.includes(' ')) {
+          setMentionQuery(textAfterAt);
+          setMentionStartIndex(lastAtIndex);
+          setMentionAnchor(inputRef.current);
+          return;
+        }
+      }
+    }
+    setMentionAnchor(null);
+    setMentionQuery('');
+    setMentionStartIndex(-1);
+  };
+
+  const handleSelectMention = (clientId: string, clientName: string) => {
+    const before = inputValue.slice(0, mentionStartIndex);
+    const after = inputValue.slice(inputRef.current?.selectionStart || 0);
+    const newValue = `${before}@${clientName} ${after}`;
+    setInputValue(newValue);
+    setMentionAnchor(null);
+    setMentionQuery('');
+    setMentionStartIndex(-1);
+    inputRef.current?.focus();
+  };
+
+  const handleClearMessages = () => {
+    if (selectedRoom) {
+      mqttService.clearMessagesForRoom(selectedRoom.id);
+      setMessages([]);
     }
   };
 
@@ -244,10 +334,15 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
       }}
     >
       {/* Chat header */}
-      <Box sx={{ width: '100%', maxWidth: '100%', mb: 0, bgcolor: 'white', borderRadius: 2, border: '1px solid #e0e0e0', py: 1, px: 2 }}>
+      <Box sx={{ width: '100%', maxWidth: '100%', mb: 0, bgcolor: 'white', borderRadius: 2, border: '1px solid #e0e0e0', py: 1, px: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h5" sx={{ fontWeight: 600, color: '#171717' }}>
           {selectedRoom.name} {selectedRoom.isGroup ? '(Group)' : '(Direct)'}
         </Typography>
+        <Tooltip title="清空消息">
+          <IconButton onClick={handleClearMessages} size="small" sx={{ color: '#6b7280' }}>
+            <DeleteIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* Messages container */}
@@ -297,10 +392,12 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                       bgcolor: isOwnMessage ? '#d9ffd3' : '#f5f5f5',
                       border: isOwnMessage ? 'none' : '1px solid #e0e0e0',
                       p: 1.5,
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
                     }}
                   >
                     {/* 发送者信息：始终显示发送者名称和图标 */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, flexWrap: 'wrap' }}>
                       <Typography variant="caption" sx={{ fontSize: '14px' }}>
                         {getSenderEmoji(message.senderId, message.senderEmoji)}
                       </Typography>
@@ -311,19 +408,24 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                     <ListItemText
                     primary={
                       markedModule ? (
-                        <div 
-                          dangerouslySetInnerHTML={{ 
-                            __html: parseMarkdown(message.text) 
-                          }} 
-                          style={{ wordWrap: 'break-word' }}
-                        />
+                        <Box component="span" className="markdown-content" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word', display: 'block' }}>
+                          <div 
+                            className="markdown-content"
+                            dangerouslySetInnerHTML={{ 
+                              __html: parseMarkdown(message.text) 
+                            }} 
+                          />
+                        </Box>
                       ) : (
-                        <span>{message.text}</span>
+                        <Box component="span" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
+                          {message.text}
+                        </Box>
                       )
                     }
                     secondary={formatTime(message.timestamp)}
                     sx={{ 
                       wordWrap: 'break-word',
+                      overflowWrap: 'break-word',
                       mb: 0.5,
                       '& .MuiListItemText-secondary': {
                         fontSize: '0.7rem',
@@ -361,7 +463,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
             variant="outlined"
             placeholder={`Type a message in ${selectedRoom.name}...`}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyPress}
             disabled={isLoading}
             multiline
@@ -392,6 +494,28 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
             }}
           />
         </Paper>
+        <Popover
+          open={Boolean(mentionAnchor)}
+          anchorEl={mentionAnchor}
+          onClose={() => setMentionAnchor(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+          transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          sx={{ maxHeight: 200 }}
+        >
+          <List dense>
+            {getFilteredClients().slice(0, 5).map(client => (
+              <ListItemButton 
+                key={client.client_id}
+                onClick={() => handleSelectMention(client.client_id, client.name)}
+              >
+                <ListItemText 
+                  primary={client.name} 
+                  secondary={client.online ? '在线' : '离线'}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </Popover>
       </Box>
     </Box>
   );
