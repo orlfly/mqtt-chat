@@ -335,9 +335,12 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     >
       {/* Chat header */}
       <Box sx={{ width: '100%', maxWidth: '100%', mb: 0, bgcolor: 'white', borderRadius: 2, border: '1px solid #e0e0e0', py: 1, px: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h5" sx={{ fontWeight: 600, color: '#171717' }}>
-          {selectedRoom.name} {selectedRoom.isGroup ? '(Group)' : '(Direct)'}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {selectedRoom.isGroup ? <PeopleIcon /> : <span style={{ fontSize: '20px' }}>👤</span>}
+          <Typography variant="h5" sx={{ fontWeight: 600, color: '#171717' }}>
+            {selectedRoom.name}
+          </Typography>
+        </Box>
         <Tooltip title="清空消息">
           <IconButton onClick={handleClearMessages} size="small" sx={{ color: '#6b7280' }}>
             <DeleteIcon />

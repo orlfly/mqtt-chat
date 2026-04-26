@@ -681,6 +681,70 @@ class MQTTService {
     }
   }
 
+  deleteGroup(groupName: string, members: string[]): void {
+    console.log('deleteGroup called - groupName:', groupName, 'members:', members);
+    
+    const topic = `group_${groupName}/bound`;
+    
+    this.unsubscribeFromRoom(groupName);
+    
+    if (this.useMockService) {
+      console.log('Using mock service for group delete');
+      return;
+    }
+
+    if (this.client && this.client.connected) {
+      for (const memberId of members) {
+        if (memberId === this.clientId) continue;
+        
+        const dismissMessage = {
+          kind: 'dismissed',
+          topic: topic,
+          ts: Date.now(),
+        };
+        
+        console.log('Sending group dismiss notification to:', memberId, dismissMessage);
+        this.client.publish(`${memberId}/inbound`, JSON.stringify(dismissMessage), {
+          properties: {
+            userProperties: {
+              name: this.userProperties.name,
+              description: this.userProperties.description,
+              emoji: this.userProperties.emoji,
+              reply_to: `${this.clientId}/inbound`,
+            },
+          },
+        });
+      }
+    } else {
+      console.log('MQTT client not connected, scheduling retry for group delete');
+      setTimeout(() => {
+        if (this.client && this.client.connected) {
+          for (const memberId of members) {
+            if (memberId === this.clientId) continue;
+            
+            const dismissMessage = {
+              kind: 'dismissed',
+              topic: topic,
+              ts: Date.now(),
+            };
+            
+            console.log('Sending group dismiss notification after retry to:', memberId);
+            this.client.publish(`${memberId}/inbound`, JSON.stringify(dismissMessage), {
+              properties: {
+                userProperties: {
+                  name: this.userProperties.name,
+                  description: this.userProperties.description,
+                  emoji: this.userProperties.emoji,
+                  reply_to: `${this.clientId}/inbound`,
+                },
+              },
+            });
+          }
+        }
+      }, 500);
+    }
+  }
+
   disconnect(): void {
     if (!this.hasConnectedOnce) {
       console.log('Skipping disconnect - never connected');

@@ -22,6 +22,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
   const [selectedRoom, setSelectedRoom] = useState<ChatRoomInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const hasFetchedData = useRef(false);
   const { refreshClients } = useClients();
 
@@ -150,6 +151,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
     setCreateGroupOpen(true);
   };
 
+  const handleDeleteGroup = (groupId: string) => {
+    setChatRooms(prevRooms => prevRooms.filter(room => room.id !== groupId));
+  };
+
   const handleCreateGroupDialogClose = () => {
     setCreateGroupOpen(false);
   };
@@ -164,9 +169,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
         rooms={chatRooms} 
         onSelectRoom={handleSelectRoom} 
         currentRoom={selectedRoom}
-        isCollapsed={false}
-        onToggleCollapse={() => {}}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onCreateGroup={handleCreateGroupDialogOpen}
+        onDeleteGroup={handleDeleteGroup}
       />
       <ChatMainContent selectedRoom={selectedRoom} />
       

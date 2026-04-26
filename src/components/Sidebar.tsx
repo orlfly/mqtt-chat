@@ -6,21 +6,27 @@ import {
   ListItemIcon, 
   ListItemText, 
   Box, 
+  Typography,
   IconButton,
   Tooltip,
   TextField,
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
-  Button
+  Button,
+  Popover
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import MenuIcon from '@mui/icons-material/Menu';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
+import DeleteIcon from '@mui/icons-material/Delete';
+import InfoIcon from '@mui/icons-material/Info';
 import './Sidebar.css';
 import CreateGroupDialog from './CreateGroupDialog';
 import { useClients } from '../context/ClientContext';
+import mqttService from '../services/mqttService';
 
 const drawerWidth = 420; // 280 * 1.5
 const collapsedWidth = 90; // 60 * 1.5
@@ -38,6 +44,7 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onCreateGroup: () => void;
+  onDeleteGroup: (groupId: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -46,10 +53,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   currentRoom, 
   isCollapsed, 
   onToggleCollapse,
-  onCreateGroup
+  onCreateGroup,
+  onDeleteGroup
 }) => {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [userDetailOpen, setUserDetailOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [userDetailAnchor, setUserDetailAnchor] = useState<HTMLElement | null>(null);
+  const [deleteGroupOpen, setDeleteGroupOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const { clients } = useClients();
 
   const handleCreateGroupDialogOpen = () => {
@@ -66,6 +79,54 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (error) {
       console.error('Failed to create group:', error);
     }
+  };
+
+  const handleViewUserDetail = (clientId: string, event?: React.MouseEvent) => {
+    setSelectedUserId(clientId);
+    if (event?.currentTarget) {
+      setUserDetailAnchor(event.currentTarget as HTMLElement);
+    }
+    setUserDetailOpen(true);
+  };
+
+  const handleCloseUserDetail = () => {
+    setUserDetailOpen(false);
+    setUserDetailAnchor(null);
+    setSelectedUserId(null);
+  };
+
+  const handleOpenDeleteGroup = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    setDeleteGroupOpen(true);
+  };
+
+  const handleCloseDeleteGroup = () => {
+    setDeleteGroupOpen(false);
+    setSelectedGroupId(null);
+  };
+
+  const handleConfirmDeleteGroup = () => {
+    if (selectedGroupId) {
+      const groupName = selectedGroupId.startsWith('group_') 
+        ? selectedGroupId.substring(6) 
+        : selectedGroupId;
+      
+      const groupMembers = clients.map(c => c.client_id);
+      mqttService.deleteGroup(groupName, groupMembers);
+      console.log('Group deleted:', groupName);
+      
+      if (currentRoom?.id === selectedGroupId) {
+        onSelectRoom({ id: '', name: '', isGroup: false });
+      }
+      
+      onDeleteGroup(selectedGroupId);
+    }
+    handleCloseDeleteGroup();
+  };
+
+  const getUserDetail = () => {
+    if (!selectedUserId) return null;
+    return mqttService.getClientDetails(selectedUserId);
   };
 
   const filteredRooms = rooms.filter((room: ChatRoom) => {
@@ -230,6 +291,36 @@ const Sidebar: React.FC<SidebarProps> = ({
                         } 
                       }}
                     />
+                    {room.isGroup ? (
+                      <Tooltip title="删除群聊">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDeleteGroup(room.id);
+                          }}
+                          sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="查看详情">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const clientId = room.id.startsWith('user_') ? room.id.substring(5) : room.id;
+                            setSelectedUserId(clientId);
+                            setUserDetailAnchor(e.currentTarget as HTMLElement);
+                            setUserDetailOpen(true);
+                          }}
+                          sx={{ color: '#9ca3af', '&:hover': { color: '#007bff' } }}
+                        >
+                          <InfoIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </ListItemButton>
                 </ListItem>
               );
@@ -300,12 +391,50 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
         <div>
-          <CreateGroupDialog
+<CreateGroupDialog
             open={createGroupOpen}
             onClose={handleCreateGroupDialogClose}
             onCreateGroup={handleCreateGroup}
           />
-	</div>
+        <Popover
+            open={userDetailOpen}
+            anchorEl={userDetailAnchor}
+            onClose={handleCloseUserDetail}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            sx={{ mt: -1 }}
+          >
+          <Box sx={{ p: 2, minWidth: 200 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>用户详情</Typography>
+            {(() => {
+              const detail = getUserDetail();
+              if (!detail) {
+                return <Typography variant="body2" color="text.secondary">未找到用户信息</Typography>;
+              }
+              return (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  <Typography variant="body2"><strong>客户端ID:</strong> {detail.client_id}</Typography>
+                  <Typography variant="body2"><strong>名称:</strong> {detail.name}</Typography>
+                  <Typography variant="body2"><strong>描述:</strong> {detail.description || '无'}</Typography>
+                  <Typography variant="body2"><strong>状态:</strong> {detail.online ? '在线' : '离线'}</Typography>
+                </Box>
+              );
+            })()}
+          </Box>
+        </Popover>
+        <Dialog open={deleteGroupOpen} onClose={handleCloseDeleteGroup}>
+          <DialogTitle>删除群聊</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              确定要删除这个群聊吗？此操作无法撤销，群聊中的所有成员都将收到解散通知。
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDeleteGroup}>取消</Button>
+            <Button onClick={handleConfirmDeleteGroup} color="error">确定</Button>
+          </DialogActions>
+        </Dialog>
+    </div>
     </div>
   );
 };
