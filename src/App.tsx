@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import { Box } from '@mui/material';
 import ChatLayout from './components/ChatLayout';
 import mqttService from './services/mqttService';
-import { ClientProvider, useClients } from './context/ClientContext';
+import { ClientProvider, useClients, registerClientContext } from './context/ClientContext';
 import LoginPage from './components/LoginPage';
 
 const AppContent: React.FC<{ connectionSuccess: boolean; onLogout: () => void }> = ({ connectionSuccess, onLogout }) => {
-  useClients();
+  const { refreshClients } = useClients();
+  
+  useEffect(() => {
+    registerClientContext(refreshClients, () => {});
+  }, [refreshClients]);
+  
   return <ChatLayout connectionSuccess={connectionSuccess} onLogout={onLogout} />;
 };
 
