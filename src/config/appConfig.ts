@@ -13,9 +13,7 @@ export interface AppConfig {
     apiKey: string;
     apiSecret: string;
   };
-  development: {
-    proxyApiPath: string;
-  };
+
 }
 
 // Default configuration values
@@ -32,9 +30,6 @@ const defaultConfig: AppConfig = {
     baseUrl: 'http://localhost:18083',
     apiKey: 'your-emqx-api-key',
     apiSecret: 'your-emqx-api-secret',
-  },
-  development: {
-    proxyApiPath: '/api/v5', // This path is configured in package.json proxy
   },
 };
 
@@ -67,9 +62,6 @@ const appConfig: AppConfig = {
     baseUrl: process.env.REACT_APP_EMQX_BASE_URL || defaultConfig.emqx.baseUrl,
     apiKey: process.env.REACT_APP_EMQX_API_KEY || defaultConfig.emqx.apiKey,
     apiSecret: process.env.REACT_APP_EMQX_API_SECRET || defaultConfig.emqx.apiSecret,
-  },
-  development: {
-    proxyApiPath: process.env.REACT_APP_DEV_PROXY_PATH || defaultConfig.development.proxyApiPath,
   },
 };
 

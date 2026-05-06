@@ -89,11 +89,9 @@ class EMQXApiService {
       apiSecret: appConfig.emqx.apiSecret
     };
     
-    // In development, use proxy path; in production, use direct URL
-    // The proxy in package.json forwards /api/v5 requests to http://localhost:18083
-    const baseURL = process.env.NODE_ENV === 'development' 
-      ? appConfig.development.proxyApiPath  // Proxy path handled by react-scripts
-      : `${effectiveConfig.baseUrl}/api/v5`;  // Direct API in production
+    const baseURL = process.env.NODE_ENV === 'development'
+      ? '/api/v5'
+      : `${effectiveConfig.baseUrl}/api/v5`;
 
     // Create the basic auth token
     const authToken = this.generateAuthToken(effectiveConfig.apiKey, effectiveConfig.apiSecret);
