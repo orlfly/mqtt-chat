@@ -12,13 +12,16 @@ import {
   CircularProgress,
   InputAdornment,
   Popover,
-  Chip,
   Tooltip,
   Button
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PeopleIcon from '@mui/icons-material/People';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DownloadIcon from '@mui/icons-material/Download';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import mqttService, { Message } from '../services/mqttService';
 import { useClients } from '../context/ClientContext';
 
@@ -38,6 +41,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [mentionAnchor, setMentionAnchor] = useState<HTMLElement | null>(null);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -179,6 +183,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
         senderId: mqttService.clientId || '',
         senderEmoji: userInfo.emoji,
         timestamp: new Date(),
+        type: 'text' as const,
       };
       
       // 添加到本地消息列表（立即显示）
@@ -286,6 +291,98 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     if (selectedRoom) {
       mqttService.clearMessagesForRoom(selectedRoom.id);
       setMessages([]);
+    }
+  };
+
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedRoom) return;
+
+    setIsLoading(true);
+
+    try {
+      for (const file of files) {
+        const base64Data = await readFileAsBase64(file);
+        const userInfo = mqttService.getUserInfo();
+        const localMessage: Message = {
+          id: Math.random().toString(36).substr(2, 9),
+          senderId: mqttService.clientId || '',
+          senderEmoji: userInfo.emoji,
+          timestamp: new Date(),
+          type: 'file' as const,
+          fileName: file.name,
+          fileType: file.type,
+          fileData: base64Data,
+        };
+
+        setMessages(prev => [...prev, localMessage]);
+
+        if (selectedRoom.isGroup) {
+          const targetIds = extractMentionedClientIds();
+          mqttService.sendFileMessage(file.name, file.type, base64Data, selectedRoom.id, targetIds);
+        } else {
+          const targetClientId = selectedRoom.id.startsWith('user_')
+            ? selectedRoom.id.substring(5)
+            : selectedRoom.id;
+          mqttService.sendPrivateFileMessage(file.name, file.type, base64Data, targetClientId, selectedRoom.id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send file:', error);
+      setMessages(prev => {
+        const fileCount = e.target.files?.length || 0;
+        return prev.slice(0, -fileCount);
+      });
+    } finally {
+      setIsLoading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDownloadFile = (message: Message) => {
+    if (!message.fileData || !message.fileName) return;
+    const mimeType = message.fileType || 'application/octet-stream';
+    const dataUrl = `data:${mimeType};base64,${message.fileData}`;
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = message.fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const formatFileSize = (message: Message): string => {
+    if (!message.fileData) return '';
+    const bytes = Math.ceil((message.fileData.length * 3) / 4);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const isImageFile = (message: Message): boolean => {
+    return !!message.fileType?.startsWith('image/');
+  };
+
+  const handleCopyMessage = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
     }
   };
 
@@ -407,36 +504,90 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                       <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666' }}>
                         {getSenderName(message.senderId)}
                       </Typography>
+                      <Box sx={{ flex: 1 }} />
+                      {message.type !== 'file' && (
+                        <Tooltip title="复制">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleCopyMessage(message.text || '')}
+                            sx={{
+                              opacity: 0.4,
+                              '&:hover': { opacity: 1 },
+                              p: 0.3,
+                            }}
+                          >
+                            <ContentCopyIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Box>
-                    <ListItemText
-                    primary={
-                      markedModule ? (
-                        <Box component="span" className="markdown-content" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word', display: 'block' }}>
-                          <div 
-                            className="markdown-content"
-                            dangerouslySetInnerHTML={{ 
-                              __html: parseMarkdown(message.text) 
-                            }} 
+                    {message.type === 'file' ? (
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        {isImageFile(message) && message.fileData ? (
+                          <Box
+                            component="img"
+                            sx={{
+                              maxWidth: '100%',
+                              maxHeight: 200,
+                              borderRadius: 1,
+                              objectFit: 'contain',
+                            }}
+                            src={`data:${message.fileType};base64,${message.fileData}`}
+                            alt={message.fileName}
                           />
-                        </Box>
-                      ) : (
-                        <Box component="span" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
-                          {message.text}
-                        </Box>
-                      )
-                    }
-                    secondary={formatTime(message.timestamp)}
-                    sx={{ 
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      mb: 0.5,
-                      '& .MuiListItemText-secondary': {
-                        fontSize: '0.7rem',
-                        textAlign: isOwnMessage ? 'right' : 'left'
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, bgcolor: '#e8e8e8', borderRadius: 1 }}>
+                            <InsertDriveFileIcon sx={{ fontSize: 32, color: '#666' }} />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {message.fileName}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: '#888' }}>
+                                {formatFileSize(message)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        )}
+                        <Button
+                          size="small"
+                          startIcon={<DownloadIcon />}
+                          onClick={() => handleDownloadFile(message)}
+                          sx={{ alignSelf: 'flex-start' }}
+                        >
+                          下载文件
+                        </Button>
+                      </Box>
+                    ) : (
+                      <ListItemText
+                      primary={
+                        markedModule ? (
+                          <Box component="span" className="markdown-content" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word', display: 'block' }}>
+                            <div 
+                              className="markdown-content"
+                              dangerouslySetInnerHTML={{ 
+                                __html: parseMarkdown(message.text || '') 
+                              }} 
+                            />
+                          </Box>
+                        ) : (
+                          <Box component="span" sx={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
+                            {message.text || ''}
+                          </Box>
+                        )
                       }
-                    }}
-                  />
-                </Box>
+                      secondary={formatTime(message.timestamp)}
+                      sx={{ 
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        mb: 0.5,
+                        '& .MuiListItemText-secondary': {
+                          fontSize: '0.7rem',
+                          textAlign: isOwnMessage ? 'right' : 'left'
+                        }
+                      }}
+                    />
+                    )}
+                  </Box>
               </ListItem>
               );
             })
@@ -447,6 +598,12 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
 
       {/* Input area */}
       <Box sx={{ display: 'flex', alignItems: 'center', height: 80 }}>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
         <Paper
           sx={{
             flex: 1,
@@ -476,6 +633,15 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
               sx: { borderRadius: 20, py: 2, px: 2 },
               endAdornment: (
                 <InputAdornment position="end">
+                  <Tooltip title="发送文件">
+                    <IconButton
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading || !selectedRoom}
+                      sx={{ color: '#6b7280', mr: 0.5 }}
+                    >
+                      <AttachFileIcon />
+                    </IconButton>
+                  </Tooltip>
                   <IconButton
                     onClick={handleSendMessage}
                     disabled={!inputValue.trim() || isLoading || !selectedRoom}

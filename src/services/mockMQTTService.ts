@@ -43,6 +43,7 @@ class MockMQTTService {
       text,
       senderId: props.name || sender,
       timestamp: new Date(),
+      type: 'text',
       senderDescription: props.description,
       senderEmoji: props.emoji,
       replyTo: props.reply_to,
@@ -81,6 +82,7 @@ class MockMQTTService {
       text,
       senderId: props.name || sender,
       timestamp: new Date(),
+      type: 'text',
       senderDescription: props.description,
       senderEmoji: props.emoji,
       replyTo: props.reply_to,
@@ -88,6 +90,26 @@ class MockMQTTService {
     
     console.log(`Mock incoming message to room ${roomId}:`, message);
     this.notifyMessageListeners(message);
+  }
+
+  sendFileMessage(fileName: string, fileType: string, fileData: string, roomId: string): void {
+    const message: Message = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      senderId: this.userProperties.name || 'mock-client',
+      timestamp: new Date(),
+      type: 'file',
+      fileName,
+      fileType,
+      fileData,
+      senderDescription: this.userProperties.description,
+      senderEmoji: this.userProperties.emoji,
+    };
+
+    console.log(`Mock file message sent to room ${roomId}:`, message);
+
+    setTimeout(() => {
+      this.notifyMessageListeners(message);
+    }, 100);
   }
 }
 

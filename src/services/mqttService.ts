@@ -6,13 +6,17 @@ import { refreshClientList } from '../context/ClientContext';
 
 interface Message {
   id: string;
-  text: string;
+  text?: string;
   senderId: string;
   timestamp: Date;
   senderDescription?: string;
   senderEmoji?: string;
   replyTo?: string;
   targetIds?: string[];
+  type?: 'text' | 'file';
+  fileName?: string;
+  fileType?: string;
+  fileData?: string;
 }
 
 interface ClientDetail {
@@ -116,9 +120,13 @@ class MQTTService {
             // 解析消息体
             const parsedMessage: Message = {
               id: msgData.id || Math.random().toString(36).substr(2, 9),
-              text: msgData.text,
+              text: msgData.type === 'file' ? `[文件] ${msgData.fileName || '未知文件'}` : msgData.text,
               senderId: msgData.senderId,
               timestamp: new Date(msgData.timestamp || Date.now()),
+              type: msgData.type || 'text',
+              fileName: msgData.fileName,
+              fileType: msgData.fileType,
+              fileData: msgData.fileData,
             };
             
             // 解析 userProperties
@@ -370,6 +378,7 @@ class MQTTService {
         text,
         senderId: this.clientId,
         timestamp: new Date(),
+        type: 'text',
         targetIds: targetIds || [],
       };
       
@@ -401,6 +410,7 @@ class MQTTService {
             senderId: this.clientId,
             senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
+            type: 'text',
             targetIds: targetIds || [],
           };
           
@@ -567,6 +577,7 @@ class MQTTService {
         text,
         senderId: this.clientId,
         timestamp: new Date(),
+        type: 'text',
       };
       
       this.saveMessageToStorage(message, targetRoom);
@@ -594,6 +605,7 @@ class MQTTService {
             senderId: this.clientId,
             senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
+            type: 'text',
           };
           
           this.saveMessageToStorage(message, targetRoom);
@@ -614,6 +626,157 @@ class MQTTService {
           mockMQTTService.sendMessage(text, sender, targetRoom);
         }
       }, 500); // Wait 500ms before trying again
+    }
+  }
+
+  sendFileMessage(fileName: string, fileType: string, fileData: string, roomId: string, targetIds?: string[]): void {
+    console.log('sendFileMessage called - fileName:', fileName, 'fileType:', fileType);
+    
+    if (this.useMockService) {
+      console.log('Using mock service for file message');
+      mockMQTTService.sendFileMessage(fileName, fileType, fileData, roomId);
+      return;
+    }
+
+    if (this.client && this.client.connected) {
+      let topic;
+      let groupName = '';
+      if (roomId.startsWith('group_')) {
+        groupName = roomId.substring(6);
+      }
+      topic = `group_${groupName || roomId}/bound`;
+      
+      const message: Message = {
+        id: Math.random().toString(36).substr(2, 9),
+        senderId: this.clientId,
+        timestamp: new Date(),
+        type: 'file',
+        fileName,
+        fileType,
+        fileData,
+        targetIds: targetIds || [],
+      };
+      
+      this.saveMessageToStorage(message, roomId);
+      console.log('Publishing file message to topic:', topic);
+      this.client.publish(topic, JSON.stringify(message), {
+        properties: {
+          userProperties: {
+            name: this.userProperties.name,
+            description: this.userProperties.description,
+            emoji: this.userProperties.emoji,
+          },
+        },
+      });
+      console.log('Published file message to topic:', topic);
+    } else {
+      console.log('MQTT client not connected, scheduling retry for file message');
+      setTimeout(() => {
+        if (this.client && this.client.connected) {
+          console.log('Retrying file message send with real MQTT client');
+          let groupName = '';
+          if (roomId.startsWith('group_')) {
+            groupName = roomId.substring(6);
+          }
+          const topic = `group_${groupName || roomId}/bound`;
+          const message: Message = {
+            id: Math.random().toString(36).substr(2, 9),
+            senderId: this.clientId,
+            senderEmoji: this.userProperties.emoji,
+            timestamp: new Date(),
+            type: 'file',
+            fileName,
+            fileType,
+            fileData,
+            targetIds: targetIds || [],
+          };
+          
+          this.saveMessageToStorage(message, roomId);
+          console.log('Publishing file message to topic after retry:', topic);
+          this.client.publish(topic, JSON.stringify(message), {
+            properties: {
+              userProperties: {
+                name: this.userProperties.name,
+                description: this.userProperties.description,
+                emoji: this.userProperties.emoji,
+              },
+            },
+          });
+          console.log('Published file message after retry to topic:', topic);
+        } else {
+          console.log('MQTT client still not connected, using mock service to send file message');
+          mockMQTTService.sendFileMessage(fileName, fileType, fileData, roomId);
+        }
+      }, 500);
+    }
+  }
+
+  sendPrivateFileMessage(fileName: string, fileType: string, fileData: string, targetClientId: string, targetRoom: string): void {
+    console.log('sendPrivateFileMessage called - fileName:', fileName, 'targetClientId:', targetClientId);
+    
+    if (this.useMockService) {
+      console.log('Using mock service for private file message');
+      mockMQTTService.sendFileMessage(fileName, fileType, fileData, targetRoom);
+      return;
+    }
+
+    if (this.client && this.client.connected) {
+      const topic = `${targetClientId}/inbound`;
+      const message: Message = {
+        id: Math.random().toString(36).substr(2, 9),
+        senderId: this.clientId,
+        timestamp: new Date(),
+        type: 'file',
+        fileName,
+        fileType,
+        fileData,
+      };
+      
+      this.saveMessageToStorage(message, targetRoom);
+      console.log('Sending private file message:', message);
+      this.client.publish(topic, JSON.stringify(message), {
+        properties: {
+          userProperties: {
+            name: this.userProperties.name,
+            description: this.userProperties.description,
+            emoji: this.userProperties.emoji,
+            reply_to: `${this.clientId}/inbound`,
+          },
+        },
+      });
+      console.log('Published private file message to topic:', topic);
+    } else {
+      console.log('MQTT client not connected, scheduling retry for private file message');
+      setTimeout(() => {
+        if (this.client && this.client.connected) {
+          const topic = `${targetClientId}/inbound`;
+          const message: Message = {
+            id: Math.random().toString(36).substr(2, 9),
+            senderId: this.clientId,
+            senderEmoji: this.userProperties.emoji,
+            timestamp: new Date(),
+            type: 'file',
+            fileName,
+            fileType,
+            fileData,
+          };
+          
+          this.saveMessageToStorage(message, targetRoom);
+          this.client.publish(topic, JSON.stringify(message), {
+            properties: {
+              userProperties: {
+                name: this.userProperties.name,
+                description: this.userProperties.description,
+                emoji: this.userProperties.emoji,
+                reply_to: `${this.clientId}/inbound`,
+              },
+            },
+          });
+          console.log('Published private file message after retry to topic:', topic);
+        } else {
+          mockMQTTService.sendFileMessage(fileName, fileType, fileData, targetRoom);
+        }
+      }, 500);
     }
   }
 
