@@ -7,8 +7,6 @@ import {
   Button,
   TextField,
   Checkbox,
-  FormControlLabel,
-  FormGroup,
   Box,
   Typography,
   Chip,
@@ -18,8 +16,6 @@ import {
   ListItemText,
   ListItemAvatar
 } from '@mui/material';
-import PeopleIcon from '@mui/icons-material/People';
-import PersonIcon from '@mui/icons-material/Person';
 import mqttService from '../services/mqttService';
 import emqxApiClient from '../services/emqxApiClient';
 

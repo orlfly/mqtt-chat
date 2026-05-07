@@ -65,10 +65,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const { clients } = useClients();
 
-  const handleCreateGroupDialogOpen = () => {
-    setCreateGroupOpen(true);
-  };
-
   const handleCreateGroupDialogClose = () => {
     setCreateGroupOpen(false);
   };
@@ -79,14 +75,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (error) {
       console.error('Failed to create group:', error);
     }
-  };
-
-  const handleViewUserDetail = (clientId: string, event?: React.MouseEvent) => {
-    setSelectedUserId(clientId);
-    if (event?.currentTarget) {
-      setUserDetailAnchor(event.currentTarget as HTMLElement);
-    }
-    setUserDetailOpen(true);
   };
 
   const handleCloseUserDetail = () => {

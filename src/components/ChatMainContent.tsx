@@ -112,7 +112,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     return () => {
       mqttService.removeMessageListener(handleMessage);
     };
-  }, [selectedRoom]); // Only depend on id to prevent endless re-subscriptions
+  }, [selectedRoom, currentClientId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -489,7 +489,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                     sx={{
                       maxWidth: { xs: '85%', sm: '80%', md: '75%' },
                       borderRadius: 2,
-                      bgcolor: isOwnMessage ? '#d9ffd3' : '#f5f5f5',
+                      bgcolor: isOwnMessage ? '#2ac360' : '#f5f5f5',
                       border: isOwnMessage ? 'none' : '1px solid #e0e0e0',
                       p: 1.5,
                       wordBreak: 'break-word',

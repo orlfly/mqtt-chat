@@ -6,10 +6,7 @@ import {
   Typography,
   Paper,
   CircularProgress,
-  IconButton,
-  InputAdornment,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => Promise<void>;
