@@ -9,9 +9,6 @@ interface Message {
   text?: string;
   senderId: string;
   timestamp: Date;
-  senderDescription?: string;
-  senderEmoji?: string;
-  replyTo?: string;
   targetIds?: string[];
   type?: 'text' | 'file';
   fileName?: string;
@@ -136,19 +133,9 @@ class MQTTService {
               const name = Array.isArray(userProperties.name) ? userProperties.name[0] : userProperties.name;
               const description = Array.isArray(userProperties.description) ? userProperties.description[0] : userProperties.description;
               const emoji = Array.isArray(userProperties.emoji) ? userProperties.emoji[0] : userProperties.emoji;
-              const reply_to = Array.isArray(userProperties.reply_to) ? userProperties.reply_to[0] : userProperties.reply_to;
               
               if (name) {
                 parsedMessage.senderId = parsedMessage.senderId || name;
-              }
-              if (description) {
-                parsedMessage.senderDescription = description;
-              }
-              if (emoji) {
-                parsedMessage.senderEmoji = emoji;
-              }
-              if (reply_to) {
-                parsedMessage.replyTo = reply_to;
               }
               
               // 更新客户端详情
@@ -408,7 +395,6 @@ class MQTTService {
             id: Math.random().toString(36).substr(2, 9),
             text,
             senderId: this.clientId,
-            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
             type: 'text',
             targetIds: targetIds || [],
@@ -603,7 +589,6 @@ class MQTTService {
             id: Math.random().toString(36).substr(2, 9),
             text,
             senderId: this.clientId,
-            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
             type: 'text',
           };
@@ -638,8 +623,10 @@ class MQTTService {
       return;
     }
 
+    console.log('[mqttService.sendFileMessage] Starting, fileName:', fileName, 'base64Length:', fileData.length);
+
     if (this.client && this.client.connected) {
-      let topic;
+      let topic: string;
       let groupName = '';
       if (roomId.startsWith('group_')) {
         groupName = roomId.substring(6);
@@ -657,9 +644,13 @@ class MQTTService {
         targetIds: targetIds || [],
       };
       
+      const jsonString = JSON.stringify(message);
+      console.log('[mqttService.sendFileMessage] Message created, topic:', topic, 'jsonLength:', jsonString.length, 'estimatedBytes:', new Blob([jsonString]).size);
+      
       this.saveMessageToStorage(message, roomId);
-      console.log('Publishing file message to topic:', topic);
-      this.client.publish(topic, JSON.stringify(message), {
+      console.log('[mqttService.sendFileMessage] Saved to storage, now publishing...');
+      
+      this.client.publish(topic, jsonString, {
         properties: {
           userProperties: {
             name: this.userProperties.name,
@@ -667,13 +658,19 @@ class MQTTService {
             emoji: this.userProperties.emoji,
           },
         },
+      }, (err) => {
+        if (err) {
+          console.error('[mqttService.sendFileMessage] Publish error:', err);
+        } else {
+          console.log('[mqttService.sendFileMessage] Publish callback success, topic:', topic);
+        }
       });
-      console.log('Published file message to topic:', topic);
+      console.log('[mqttService.sendFileMessage] Publish called (async)');
     } else {
-      console.log('MQTT client not connected, scheduling retry for file message');
+      console.log('[mqttService.sendFileMessage] MQTT client not connected, scheduling retry');
       setTimeout(() => {
         if (this.client && this.client.connected) {
-          console.log('Retrying file message send with real MQTT client');
+          console.log('[mqttService.sendFileMessage] Retrying...');
           let groupName = '';
           if (roomId.startsWith('group_')) {
             groupName = roomId.substring(6);
@@ -682,7 +679,6 @@ class MQTTService {
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             senderId: this.clientId,
-            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
             type: 'file',
             fileName,
@@ -691,9 +687,11 @@ class MQTTService {
             targetIds: targetIds || [],
           };
           
+          const jsonString = JSON.stringify(message);
+          console.log('[mqttService.sendFileMessage] Retry: jsonLength:', jsonString.length);
+          
           this.saveMessageToStorage(message, roomId);
-          console.log('Publishing file message to topic after retry:', topic);
-          this.client.publish(topic, JSON.stringify(message), {
+          this.client.publish(topic, jsonString, {
             properties: {
               userProperties: {
                 name: this.userProperties.name,
@@ -701,10 +699,15 @@ class MQTTService {
                 emoji: this.userProperties.emoji,
               },
             },
+          }, (err) => {
+            if (err) {
+              console.error('[mqttService.sendFileMessage] Retry publish error:', err);
+            } else {
+              console.log('[mqttService.sendFileMessage] Retry publish callback success');
+            }
           });
-          console.log('Published file message after retry to topic:', topic);
         } else {
-          console.log('MQTT client still not connected, using mock service to send file message');
+          console.log('[mqttService.sendFileMessage] MQTT client still not connected, using mock service');
           mockMQTTService.sendFileMessage(fileName, fileType, fileData, roomId);
         }
       }, 500);
@@ -712,7 +715,7 @@ class MQTTService {
   }
 
   sendPrivateFileMessage(fileName: string, fileType: string, fileData: string, targetClientId: string, targetRoom: string): void {
-    console.log('sendPrivateFileMessage called - fileName:', fileName, 'targetClientId:', targetClientId);
+    console.log('[mqttService.sendPrivateFileMessage] Starting, fileName:', fileName, 'targetClientId:', targetClientId, 'base64Length:', fileData.length);
     
     if (this.useMockService) {
       console.log('Using mock service for private file message');
@@ -732,9 +735,13 @@ class MQTTService {
         fileData,
       };
       
+      const jsonString = JSON.stringify(message);
+      console.log('[mqttService.sendPrivateFileMessage] Message created, topic:', topic, 'jsonLength:', jsonString.length, 'estimatedBytes:', new Blob([jsonString]).size);
+      
       this.saveMessageToStorage(message, targetRoom);
-      console.log('Sending private file message:', message);
-      this.client.publish(topic, JSON.stringify(message), {
+      console.log('[mqttService.sendPrivateFileMessage] Saved to storage, now publishing...');
+      
+      this.client.publish(topic, jsonString, {
         properties: {
           userProperties: {
             name: this.userProperties.name,
@@ -743,17 +750,23 @@ class MQTTService {
             reply_to: `${this.clientId}/inbound`,
           },
         },
+      }, (err) => {
+        if (err) {
+          console.error('[mqttService.sendPrivateFileMessage] Publish error:', err);
+        } else {
+          console.log('[mqttService.sendPrivateFileMessage] Publish callback success, topic:', topic);
+        }
       });
-      console.log('Published private file message to topic:', topic);
+      console.log('[mqttService.sendPrivateFileMessage] Publish called (async)');
     } else {
-      console.log('MQTT client not connected, scheduling retry for private file message');
+      console.log('[mqttService.sendPrivateFileMessage] MQTT client not connected, scheduling retry');
       setTimeout(() => {
         if (this.client && this.client.connected) {
+          console.log('[mqttService.sendPrivateFileMessage] Retrying...');
           const topic = `${targetClientId}/inbound`;
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             senderId: this.clientId,
-            senderEmoji: this.userProperties.emoji,
             timestamp: new Date(),
             type: 'file',
             fileName,
@@ -761,8 +774,11 @@ class MQTTService {
             fileData,
           };
           
+          const jsonString = JSON.stringify(message);
+          console.log('[mqttService.sendPrivateFileMessage] Retry: jsonLength:', jsonString.length);
+          
           this.saveMessageToStorage(message, targetRoom);
-          this.client.publish(topic, JSON.stringify(message), {
+          this.client.publish(topic, jsonString, {
             properties: {
               userProperties: {
                 name: this.userProperties.name,
@@ -771,9 +787,15 @@ class MQTTService {
                 reply_to: `${this.clientId}/inbound`,
               },
             },
+          }, (err) => {
+            if (err) {
+              console.error('[mqttService.sendPrivateFileMessage] Retry publish error:', err);
+            } else {
+              console.log('[mqttService.sendPrivateFileMessage] Retry publish callback success');
+            }
           });
-          console.log('Published private file message after retry to topic:', topic);
         } else {
+          console.log('[mqttService.sendPrivateFileMessage] MQTT client still not connected, using mock service');
           mockMQTTService.sendFileMessage(fileName, fileType, fileData, targetRoom);
         }
       }, 500);
@@ -1018,6 +1040,15 @@ class MQTTService {
         const clientId = roomId.startsWith('user_') ? roomId.substring(5) : roomId;
         listKey = this.getPrivateMessageListKey(clientId);
       }
+      
+      const listStr = localStorage.getItem(listKey);
+      if (listStr) {
+        const msgIds: string[] = JSON.parse(listStr);
+        for (const msgId of msgIds) {
+          localStorage.removeItem(this.getMessageStorageKey(msgId));
+        }
+      }
+      
       localStorage.setItem(listKey, JSON.stringify([]));
       console.log('[Storage] Cleared messages for room:', roomId);
     } catch (error) {

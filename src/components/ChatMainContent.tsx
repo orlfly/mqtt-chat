@@ -13,7 +13,9 @@ import {
   InputAdornment,
   Popover,
   Tooltip,
-  Button
+  Button,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -47,6 +49,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   
+  const [fileSizeWarning, setFileSizeWarning] = useState<string | null>(null);
+  
+  const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
+  
   const { clients } = useClients();
   const currentClientId = mqttService.clientId;
   
@@ -60,11 +66,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
   };
   
   // 根据 senderId 获取发送者 emoji
-  const getSenderEmoji = (senderId: string, msgEmoji?: string): string => {
+  const getSenderEmoji = (senderId: string): string => {
     if (senderId === currentClientId) {
       return mqttService.getUserInfo().emoji;
     }
-    if (msgEmoji) return msgEmoji;
     const client = clients.find(c => c.client_id === senderId);
     return client?.emoji || '👤';
   };
@@ -176,12 +181,10 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     
     try {
       // 1. 创建本地消息对象并立即显示（乐观更新）
-      const userInfo = mqttService.getUserInfo();
       const localMessage = {
         id: Math.random().toString(36).substr(2, 9),
         text: inputValue,
         senderId: mqttService.clientId || '',
-        senderEmoji: userInfo.emoji,
         timestamp: new Date(),
         type: 'text' as const,
       };
@@ -311,16 +314,33 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedRoom) return;
 
+    const oversizedFiles: string[] = [];
+    for (const file of files) {
+      if (file.size > FILE_SIZE_LIMIT) {
+        oversizedFiles.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+      }
+    }
+
+    if (oversizedFiles.length > 0) {
+      setFileSizeWarning(`以下文件超过10MB限制，无法发送：\n${oversizedFiles.join('\n')}`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setIsLoading(true);
+    console.log('[FileSend] Starting file send, fileCount:', files.length);
 
     try {
       for (const file of files) {
+        console.log('[FileSend] Processing file:', file.name, 'size:', file.size, 'type:', file.type);
         const base64Data = await readFileAsBase64(file);
-        const userInfo = mqttService.getUserInfo();
+        console.log('[FileSend] Base64 encoding done, base64Length:', base64Data.length, 'estimatedSize:', Math.ceil((base64Data.length * 3) / 4), 'bytes');
+
         const localMessage: Message = {
           id: Math.random().toString(36).substr(2, 9),
           senderId: mqttService.clientId || '',
-          senderEmoji: userInfo.emoji,
           timestamp: new Date(),
           type: 'file' as const,
           fileName: file.name,
@@ -328,25 +348,30 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
           fileData: base64Data,
         };
 
+        console.log('[FileSend] Local message created, id:', localMessage.id);
         setMessages(prev => [...prev, localMessage]);
 
         if (selectedRoom.isGroup) {
           const targetIds = extractMentionedClientIds();
+          console.log('[FileSend] Sending file to group:', selectedRoom.id, 'targetIds:', targetIds);
           mqttService.sendFileMessage(file.name, file.type, base64Data, selectedRoom.id, targetIds);
         } else {
           const targetClientId = selectedRoom.id.startsWith('user_')
             ? selectedRoom.id.substring(5)
             : selectedRoom.id;
+          console.log('[FileSend] Sending file to private:', targetClientId, 'room:', selectedRoom.id);
           mqttService.sendPrivateFileMessage(file.name, file.type, base64Data, targetClientId, selectedRoom.id);
         }
+        console.log('[FileSend] sendFileMessage/sendPrivateFileMessage returned');
       }
     } catch (error) {
-      console.error('Failed to send file:', error);
+      console.error('[FileSend] Failed to send file:', error);
       setMessages(prev => {
         const fileCount = e.target.files?.length || 0;
         return prev.slice(0, -fileCount);
       });
     } finally {
+      console.log('[FileSend] Done, isLoading = false');
       setIsLoading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -499,7 +524,7 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
                     {/* 发送者信息：始终显示发送者名称和图标 */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, flexWrap: 'wrap' }}>
                       <Typography variant="caption" sx={{ fontSize: '14px' }}>
-                        {getSenderEmoji(message.senderId, message.senderEmoji)}
+                        {getSenderEmoji(message.senderId)}
                       </Typography>
                       <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#666' }}>
                         {getSenderName(message.senderId)}
@@ -686,6 +711,16 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
           </List>
         </Popover>
       </Box>
+      <Snackbar
+        open={Boolean(fileSizeWarning)}
+        autoHideDuration={5000}
+        onClose={() => setFileSizeWarning(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="warning" onClose={() => setFileSizeWarning(null)} sx={{ whiteSpace: 'pre-line', maxWidth: 500 }}>
+          {fileSizeWarning}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

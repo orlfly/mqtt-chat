@@ -5,7 +5,6 @@ interface MockUserProperties {
   name?: string;
   description?: string;
   emoji?: string;
-  reply_to?: string;
 }
 
 class MockMQTTService {
@@ -44,9 +43,6 @@ class MockMQTTService {
       senderId: props.name || sender,
       timestamp: new Date(),
       type: 'text',
-      senderDescription: props.description,
-      senderEmoji: props.emoji,
-      replyTo: props.reply_to,
     };
     
     console.log(`Mock message sent to room ${roomId}:`, message);
@@ -83,9 +79,6 @@ class MockMQTTService {
       senderId: props.name || sender,
       timestamp: new Date(),
       type: 'text',
-      senderDescription: props.description,
-      senderEmoji: props.emoji,
-      replyTo: props.reply_to,
     };
     
     console.log(`Mock incoming message to room ${roomId}:`, message);
@@ -101,8 +94,6 @@ class MockMQTTService {
       fileName,
       fileType,
       fileData,
-      senderDescription: this.userProperties.description,
-      senderEmoji: this.userProperties.emoji,
     };
 
     console.log(`Mock file message sent to room ${roomId}:`, message);
