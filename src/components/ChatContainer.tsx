@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box } from '@mui/material';
 import Sidebar from './Sidebar';
 import ChatMainContent from './ChatMainContent'; 
@@ -15,9 +15,10 @@ interface ChatRoomInfo {
 
 interface ChatContainerProps {
   connectionSuccess: boolean;
+  onLogout?: () => void;
 }
 
-const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
+const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess, onLogout }) => {
   const [chatRooms, setChatRooms] = useState<ChatRoomInfo[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<ChatRoomInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,87 +27,79 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
   const hasFetchedData = useRef(false);
   const { refreshClients } = useClients();
 
-  useEffect(() => {
-    if (hasFetchedData.current || !connectionSuccess) {
-      return;
-    }
-
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        if (connectionSuccess) {
-          hasFetchedData.current = true;
-          
-          const groupChats = await emqxApiClient.getGroupChats();
-          
-          for (const groupName of groupChats) {
-            mqttService.subscribeToRoom(groupName);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (connectionSuccess) {
+        
+        const groupChats = await emqxApiClient.getGroupChats();
+        
+        for (const groupName of groupChats) {
+          mqttService.subscribeToRoom(groupName);
+        }
+        
+        const users = await emqxApiClient.getUserList();
+        
+        mqttService.updateClientStatusesFromEmqxApi(users);
+        
+        const rooms: ChatRoomInfo[] = [];
+        
+        groupChats.forEach(groupName => {
+          rooms.push({
+            id: `group_${groupName}`,
+            name: groupName,
+            isGroup: true
+          });
+        });
+        
+        const allStoredClients = mqttService.getAllStoredClients();
+        const userIdMap = new Map();
+        
+        allStoredClients.forEach(client => {
+          if (client.client_id === mqttService.clientId) {
+            return;
           }
           
-          const users = await emqxApiClient.getUserList();
-          
-          mqttService.updateClientStatusesFromEmqxApi(users);
-          
-          // Combine group chats and users from localStorage into a single list
-          const rooms: ChatRoomInfo[] = [];
-          
-          // Add group chats
-          groupChats.forEach(groupName => {
+          if (!userIdMap.has(client.client_id)) {
             rooms.push({
-              id: `group_${groupName}`,
-              name: groupName,
-              isGroup: true
+              id: `user_${client.client_id}`,
+              name: client.online ? client.name : `${client.name} - offline`,
+              isGroup: false
             });
-          });
-          
-          // Add unique users from localStorage (using stored details)
-          const allStoredClients = mqttService.getAllStoredClients();
-          const userIdMap = new Map();
-          
-          // Add users from stored client details
-          allStoredClients.forEach(client => {
-            // Skip if it's the page's own client
-            if (client.client_id === mqttService.clientId) {
-              return;
-            }
-            
-            if (!userIdMap.has(client.client_id)) {
-              rooms.push({
-                id: `user_${client.client_id}`,
-                name: client.online ? client.name : `${client.name} - offline`,
-                isGroup: false
-              });
-              userIdMap.set(client.client_id, true);
-            }
-          });
-          
-          setChatRooms(rooms);
-        } else {
-          // Fallback to mock data if connection failed
-          setChatRooms([
-            { id: '1', name: 'General', isGroup: true },
-            { id: '2', name: 'Random', isGroup: true },
-            { id: '3', name: 'John Doe', isGroup: false },
-            { id: '4', name: 'Jane Smith', isGroup: false },
-          ]);
-        }
-      } catch (error) {
-        console.error('Error fetching chat rooms from EMQX:', error);
-        // Fallback to mock data if API fails
+            userIdMap.set(client.client_id, true);
+          }
+        });
+        
+        setChatRooms(rooms);
+      } else {
         setChatRooms([
           { id: '1', name: 'General', isGroup: true },
           { id: '2', name: 'Random', isGroup: true },
           { id: '3', name: 'John Doe', isGroup: false },
           { id: '4', name: 'Jane Smith', isGroup: false },
         ]);
-      } finally {
-        setLoading(false);
-        refreshClients();
       }
-    };
-
-    fetchData();
+    } catch (error) {
+      console.error('Error fetching chat rooms from EMQX:', error);
+      setChatRooms([
+        { id: '1', name: 'General', isGroup: true },
+        { id: '2', name: 'Random', isGroup: true },
+        { id: '3', name: 'John Doe', isGroup: false },
+        { id: '4', name: 'Jane Smith', isGroup: false },
+      ]);
+    } finally {
+      setLoading(false);
+      refreshClients();
+    }
   }, [connectionSuccess, refreshClients]);
+
+  useEffect(() => {
+    if (hasFetchedData.current || !connectionSuccess) {
+      return;
+    }
+    hasFetchedData.current = true;
+    fetchData();
+  }, [connectionSuccess, fetchData]);
 
   // Function to add a new group chat to the list
   const addGroupChat = (groupName: string) => {
@@ -173,6 +166,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ connectionSuccess }) => {
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         onCreateGroup={handleCreateGroupDialogOpen}
         onDeleteGroup={handleDeleteGroup}
+        onLogout={onLogout}
+        onRefresh={fetchData}
       />
       <ChatMainContent selectedRoom={selectedRoom} />
       

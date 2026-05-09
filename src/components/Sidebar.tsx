@@ -23,6 +23,8 @@ import MenuIcon from '@mui/icons-material/Menu';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InfoIcon from '@mui/icons-material/Info';
+import LogoutIcon from '@mui/icons-material/Logout';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import './Sidebar.css';
 import CreateGroupDialog from './CreateGroupDialog';
 import { useClients } from '../context/ClientContext';
@@ -45,6 +47,8 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onCreateGroup: () => void;
   onDeleteGroup: (groupId: string) => void;
+  onLogout?: () => void;
+  onRefresh?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -54,7 +58,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed, 
   onToggleCollapse,
   onCreateGroup,
-  onDeleteGroup
+  onDeleteGroup,
+  onLogout,
+  onRefresh
 }) => {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -378,7 +384,68 @@ const Sidebar: React.FC<SidebarProps> = ({
           </List>
         </div>
       )}
-        <div>
+
+      {/* Footer control area */}
+      <Box 
+        sx={{ 
+          padding: isCollapsed ? '8px' : '16px', 
+          borderTop: isCollapsed ? 'none' : '1px solid #e0e0e0', 
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isCollapsed ? 'center' : 'space-between'
+        }}
+      >
+        {/* Left: Logout */}
+        {onLogout && (
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Tooltip title="退出" placement="right">
+              <IconButton
+                onClick={onLogout}
+                size="small"
+                sx={{
+                  color: '#ef4444',
+                  '&:hover': {
+                    backgroundColor: '#fef2f2',
+                  },
+                }}
+              >
+                <LogoutIcon />
+              </IconButton>
+            </Tooltip>
+            {!isCollapsed && (
+              <Typography 
+                variant="body2" 
+                sx={{ ml: 1, color: '#ef4444', cursor: 'pointer' }}
+                onClick={onLogout}
+              >
+                退出
+              </Typography>
+            )}
+          </Box>
+        )}
+        
+        {/* Right: Refresh */}
+        {onRefresh && !isCollapsed && (
+          <Tooltip title="刷新列表" placement="left">
+            <IconButton
+              onClick={onRefresh}
+              size="small"
+              sx={{
+                color: '#6b7280',
+                '&:hover': {
+                  backgroundColor: '#e5e7eb',
+                  color: '#1f2937',
+                },
+              }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
+
+      <div>
 <CreateGroupDialog
             open={createGroupOpen}
             onClose={handleCreateGroupDialogClose}

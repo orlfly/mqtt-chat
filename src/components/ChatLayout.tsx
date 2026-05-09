@@ -1,6 +1,5 @@
 import React from 'react';
-import { Box, Button, Tooltip } from '@mui/material';
-import LogoutIcon from '@mui/icons-material/Logout';
+import { Box } from '@mui/material';
 import ChatContainer from './ChatContainer';
 
 interface ChatLayoutProps {
@@ -18,26 +17,7 @@ const ChatLayout: React.FC<ChatLayoutProps> = ({ connectionSuccess, onLogout }) 
       overflow: 'hidden',
       position: 'relative'
     }}>
-      <ChatContainer connectionSuccess={connectionSuccess || false} />
-      {onLogout && (
-        <Tooltip title="退出" placement="right">
-          <Button
-            variant="outlined"
-            color="error"
-            size="small"
-            startIcon={<LogoutIcon />}
-            onClick={onLogout}
-            sx={{ 
-              position: 'absolute',
-              bottom: 16,
-              left: 16,
-              zIndex: 1000
-            }}
-          >
-            退出
-          </Button>
-        </Tooltip>
-      )}
+      <ChatContainer connectionSuccess={connectionSuccess || false} onLogout={onLogout} />
     </Box>
   );
 };

@@ -70,6 +70,76 @@ To build for production:
 npm run build
 ```
 
+## Production Deployment
+
+### Nginx Deployment
+
+1. Build the application:
+```bash
+npm run build
+```
+
+2. Copy the build files to nginx directory:
+```bash
+cp -r build/* /usr/share/nginx/html/
+```
+
+3. Create nginx configuration file `/etc/nginx/conf.d/mqtt-chat.conf`:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+4. Test and reload nginx:
+```bash
+nginx -t
+nginx -s reload
+```
+
+### Subdirectory Deployment
+
+If deploying to a subdirectory (e.g., `/chat/`):
+
+1. Add homepage field to `package.json`:
+```json
+{
+  "homepage": "/chat/"
+}
+```
+
+2. Rebuild and update nginx config:
+```nginx
+location /chat {
+    alias /usr/share/nginx/html;
+    try_files $uri $uri/ /chat/index.html;
+}
+```
+
+### Docker Deployment
+
+```dockerfile
+FROM nginx:alpine
+COPY build/ /usr/share/nginx/html/
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+Build and run:
+```bash
+docker build -t mqtt-chat .
+docker run -d -p 80:80 mqtt-chat
+```
+
 ## MQTT Implementation
 
 The application uses the `mqtt` library to connect to an MQTT broker and handles messaging through topics:
