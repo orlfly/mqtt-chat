@@ -27,7 +27,7 @@ const defaultConfig: AppConfig = {
     clientId: 'mqtt-chat-client', // Default client ID
   },
   emqx: {
-    baseUrl: 'http://localhost:18083',
+    baseUrl: '/api/emqx', // Use relative path for proxy (works in both dev and prod)
     apiKey: 'your-emqx-api-key',
     apiSecret: 'your-emqx-api-secret',
   },

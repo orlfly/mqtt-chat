@@ -33,7 +33,6 @@ interface UserProperties {
 
 class MQTTService {
   private client: MqttClient | null = null;
-  private readonly brokerUrl: string = process.env.REACT_APP_MQTT_BROKER_URL || 'ws://localhost:8083/mqtt';
   private messageListeners: Array<(message: Message) => void> = [];
   private useMockService: boolean = false;
   private hasConnectedOnce: boolean = false;
@@ -52,6 +51,16 @@ class MQTTService {
     };
   }
   
+  private getBrokerUrl(): string {
+    const envUrl = process.env.REACT_APP_MQTT_BROKER_URL;
+    if (envUrl && (envUrl.startsWith('ws://') || envUrl.startsWith('wss://'))) {
+      return envUrl;
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    return `${protocol}//${host}/mqtt`;
+  }
+  
   async connectWithUserProperties(username?: string, password?: string): Promise<void> {
     if (this.hasConnectedOnce && this.client?.connected) {
       console.log('Already connected, skipping connect');
@@ -64,7 +73,9 @@ class MQTTService {
     
     return new Promise((resolve, reject) => {
       try {
-        this.client = mqtt.connect(this.brokerUrl, {
+        const brokerUrl = this.getBrokerUrl();
+        console.log('[MQTT] Connecting to:', brokerUrl);
+        this.client = mqtt.connect(brokerUrl, {
           clientId: appConfig.mqtt.clientId,
           protocolVersion: 5,
           username: connectUsername,

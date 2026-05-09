@@ -88,16 +88,12 @@ class EMQXApiService {
       apiKey: appConfig.emqx.apiKey,
       apiSecret: appConfig.emqx.apiSecret
     };
-    
-    const baseURL = process.env.NODE_ENV === 'development'
-      ? '/api/v5'
-      : `${effectiveConfig.baseUrl}/api/v5`;
 
     // Create the basic auth token
     const authToken = this.generateAuthToken(effectiveConfig.apiKey, effectiveConfig.apiSecret);
     
     this.api = axios.create({
-      baseURL: baseURL,
+      baseURL: effectiveConfig.baseUrl,
       headers: {
         'Authorization': `Basic ${authToken}`,
         'Content-Type': 'application/json'
