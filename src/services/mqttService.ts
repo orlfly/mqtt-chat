@@ -33,7 +33,7 @@ interface UserProperties {
 
 class MQTTService {
   private client: MqttClient | null = null;
-  private messageListeners: Array<(message: Message) => void> = [];
+  private messageListeners: Array<(message: Message, topic: string) => void> = [];
   private useMockService: boolean = false;
   private hasConnectedOnce: boolean = false;
   public clientId: string = appConfig.mqtt.clientId;
@@ -199,7 +199,7 @@ class MQTTService {
             }
             this.saveMessageToStorage(parsedMessage, roomIdForStorage);
             
-            this.notifyMessageListeners(parsedMessage);
+            this.notifyMessageListeners(parsedMessage, topic);
           } catch (error) {
             console.error('[connectWithUserProperties] Error parsing message:', error);
           }
@@ -431,19 +431,19 @@ class MQTTService {
     }
   }
 
-  addMessageListener(listener: (message: Message) => void): void {
+  addMessageListener(listener: (message: Message, topic: string) => void): void {
     this.messageListeners.push(listener);
   }
 
-  removeMessageListener(listener: (message: Message) => void): void {
+  removeMessageListener(listener: (message: Message, topic: string) => void): void {
     const index = this.messageListeners.indexOf(listener);
     if (index > -1) {
       this.messageListeners.splice(index, 1);
     }
   }
 
-  private notifyMessageListeners(message: Message): void {
-    this.messageListeners.forEach(listener => listener(message));
+  private notifyMessageListeners(message: Message, topic: string = ''): void {
+    this.messageListeners.forEach(listener => listener(message, topic));
   }
 
   private handleMockMessage(message: Message): void {
@@ -938,6 +938,32 @@ class MQTTService {
           }
         }
       }, 500);
+    }
+  }
+
+  kickMemberFromGroup(groupName: string, memberId: string): void {
+    console.log('kickMemberFromGroup called - groupName:', groupName, 'memberId:', memberId);
+
+    const topic = `group_${groupName}/bound`;
+
+    if (this.client && this.client.connected) {
+      const dismissMessage = {
+        kind: 'dismissed',
+        topic: topic,
+        ts: Date.now(),
+      };
+
+      console.log('Sending dismiss to kicked member:', memberId, dismissMessage);
+      this.client.publish(`${memberId}/inbound`, JSON.stringify(dismissMessage), {
+        properties: {
+          userProperties: {
+            name: this.userProperties.name,
+            description: this.userProperties.description,
+            emoji: this.userProperties.emoji,
+            reply_to: `${this.clientId}/inbound`,
+          },
+        },
+      });
     }
   }
 

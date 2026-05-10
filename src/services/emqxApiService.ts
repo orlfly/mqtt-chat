@@ -175,7 +175,7 @@ class EMQXApiService {
   // Get subscriptions for a specific topic
   async getTopicSubscriptions(topic: string) {
     try {
-      const response: AxiosResponse<any> = await this.api.get(`/topics/${encodeURIComponent(topic)}/subscriptions`);
+      const response: AxiosResponse<any> = await this.api.get('/subscriptions', { params: { topic } });
       return response.data;
     } catch (error) {
       console.error(`Error fetching subscriptions for topic ${topic}:`, error);

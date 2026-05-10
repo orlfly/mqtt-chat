@@ -96,11 +96,27 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
     }
     
     // Add message listener
-    const handleMessage = (msg: Message) => {
+    const handleMessage = (msg: Message, topic: string) => {
       // 过滤自己发送的消息（避免重复添加）
       if (msg.senderId === currentClientId) {
         console.log('[ChatMainContent] Skipping own message:', msg.id);
         return;
+      }
+
+      // 判断消息是否属于当前选中的房间
+      if (selectedRoom.isGroup) {
+        // 群聊: 检查 topic 是否匹配 group_{name}/bound
+        if (topic !== `group_${selectedRoom.name}/bound`) {
+          return;
+        }
+      } else {
+        // 私聊: 检查发送者是否匹配选中的客户端
+        const targetClientId = selectedRoom.id.startsWith('user_')
+          ? selectedRoom.id.substring(5)
+          : selectedRoom.id;
+        if (msg.senderId !== targetClientId) {
+          return;
+        }
       }
       
       setMessages(prev => {

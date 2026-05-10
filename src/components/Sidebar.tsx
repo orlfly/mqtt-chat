@@ -5,6 +5,8 @@ import {
   ListItemButton, 
   ListItemIcon, 
   ListItemText, 
+  ListItemAvatar,
+  Avatar,
   Box, 
   Typography,
   IconButton,
@@ -16,7 +18,8 @@ import {
   DialogContentText,
   DialogActions,
   Button,
-  Popover
+  Popover,
+  CircularProgress
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import MenuIcon from '@mui/icons-material/Menu';
@@ -25,10 +28,13 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import InfoIcon from '@mui/icons-material/Info';
 import LogoutIcon from '@mui/icons-material/Logout';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import './Sidebar.css';
 import CreateGroupDialog from './CreateGroupDialog';
+import InviteMemberDialog from './InviteMemberDialog';
 import { useClients } from '../context/ClientContext';
 import mqttService from '../services/mqttService';
+import emqxApiClient from '../services/emqxApiClient';
 
 const drawerWidth = 420; // 280 * 1.5
 const collapsedWidth = 90; // 60 * 1.5
@@ -69,6 +75,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [userDetailAnchor, setUserDetailAnchor] = useState<HTMLElement | null>(null);
   const [deleteGroupOpen, setDeleteGroupOpen] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupDetailOpen, setGroupDetailOpen] = useState(false);
+  const [selectedGroupForDetail, setSelectedGroupForDetail] = useState<string | null>(null);
+  const [groupMembers, setGroupMembers] = useState<Array<{clientId: string, name: string, emoji: string, online: boolean}>>([]);
+  const [groupDetailLoading, setGroupDetailLoading] = useState(false);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [inviteGroupName, setInviteGroupName] = useState('');
   const { clients } = useClients();
 
   const handleCreateGroupDialogClose = () => {
@@ -116,6 +128,60 @@ const Sidebar: React.FC<SidebarProps> = ({
       onDeleteGroup(selectedGroupId);
     }
     handleCloseDeleteGroup();
+  };
+
+  const handleOpenGroupDetail = async (roomId: string) => {
+    setSelectedGroupForDetail(roomId);
+    setGroupDetailOpen(true);
+    setGroupDetailLoading(true);
+
+    try {
+      const groupName = roomId.startsWith('group_') ? roomId.substring(6) : roomId;
+      const topic = `group_${groupName}/bound`;
+      const response = await emqxApiClient.getTopicSubscriptions(topic);
+      const subscriptions = response?.data || [];
+      const members = subscriptions.map((sub: any) => {
+        const clientDetail = mqttService.getClientDetails(sub.clientid);
+        return {
+          clientId: sub.clientid,
+          name: clientDetail?.name || sub.clientid,
+          emoji: clientDetail?.emoji || '👤',
+          online: clientDetail?.online || false,
+        };
+      });
+      setGroupMembers(members);
+    } catch (error) {
+      console.error('Error fetching group members:', error);
+      setGroupMembers([]);
+    } finally {
+      setGroupDetailLoading(false);
+    }
+  };
+
+  const handleCloseGroupDetail = () => {
+    setGroupDetailOpen(false);
+    setSelectedGroupForDetail(null);
+    setGroupMembers([]);
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    if (!selectedGroupForDetail) return;
+    const groupName = selectedGroupForDetail.startsWith('group_')
+      ? selectedGroupForDetail.substring(6)
+      : selectedGroupForDetail;
+
+    mqttService.kickMemberFromGroup(groupName, memberId);
+    setGroupMembers(prev => prev.filter(m => m.clientId !== memberId));
+  };
+
+  const handleOpenInvite = (roomId: string) => {
+    const groupName = roomId.startsWith('group_') ? roomId.substring(6) : roomId;
+    setInviteGroupName(groupName);
+    setInviteDialogOpen(true);
+  };
+
+  const handleInviteMembers = (groupName: string, members: string[]) => {
+    mqttService.sendGroupInvite(members, groupName);
   };
 
   const getUserDetail = () => {
@@ -286,18 +352,44 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }}
                     />
                     {room.isGroup ? (
-                      <Tooltip title="删除群聊">
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDeleteGroup(room.id);
-                          }}
-                          sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Box sx={{ display: 'flex' }}>
+                        <Tooltip title="邀请成员">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenInvite(room.id);
+                            }}
+                            sx={{ color: '#9ca3af', '&:hover': { color: '#1976d2' } }}
+                          >
+                            <PersonAddIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="群聊详情">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenGroupDetail(room.id);
+                            }}
+                            sx={{ color: '#9ca3af', '&:hover': { color: '#007bff' } }}
+                          >
+                            <InfoIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="删除群聊">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDeleteGroup(room.id);
+                            }}
+                            sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     ) : (
                       <Tooltip title="查看详情">
                         <IconButton
@@ -489,6 +581,61 @@ const Sidebar: React.FC<SidebarProps> = ({
             <Button onClick={handleConfirmDeleteGroup} color="error">确定</Button>
           </DialogActions>
         </Dialog>
+        <Dialog open={groupDetailOpen} onClose={handleCloseGroupDetail} maxWidth="xs" fullWidth>
+          <DialogTitle>
+            {selectedGroupForDetail
+              ? (selectedGroupForDetail.startsWith('group_')
+                  ? selectedGroupForDetail.substring(6)
+                  : selectedGroupForDetail)
+              : ''} - 群成员
+          </DialogTitle>
+          <DialogContent>
+            {groupDetailLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress />
+              </Box>
+            ) : groupMembers.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">暂无成员信息</Typography>
+            ) : (
+              <List dense>
+                {groupMembers.map(member => (
+                  <ListItem
+                    key={member.clientId}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => handleRemoveMember(member.clientId)}
+                        sx={{ color: '#9ca3af', '&:hover': { color: '#ef4444' } }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    }
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: member.online ? '#4caf50' : '#bdbdbd' }}>
+                        {member.emoji}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={member.name}
+                      secondary={`${member.clientId} · ${member.online ? '在线' : '离线'}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseGroupDetail}>关闭</Button>
+          </DialogActions>
+        </Dialog>
+        <InviteMemberDialog
+          open={inviteDialogOpen}
+          groupName={inviteGroupName}
+          onClose={() => setInviteDialogOpen(false)}
+          onInvite={handleInviteMembers}
+        />
     </div>
     </div>
   );
