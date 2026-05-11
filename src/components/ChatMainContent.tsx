@@ -104,13 +104,20 @@ const ChatMainContent: React.FC<ChatMainContentProps> = ({ selectedRoom }) => {
       }
 
       // 判断消息是否属于当前选中的房间
-      if (selectedRoom.isGroup) {
-        // 群聊: 检查 topic 是否匹配 group_{name}/bound
+      // 先根据 topic 判断消息类型
+      if (topic.startsWith('group_')) {
+        // 群聊消息：当前必须是群聊房间且 topic 匹配
+        if (!selectedRoom.isGroup) {
+          return;
+        }
         if (topic !== `group_${selectedRoom.name}/bound`) {
           return;
         }
       } else {
-        // 私聊: 检查发送者是否匹配选中的客户端
+        // 私聊消息 (topic 格式: {clientId}/inbound)：当前必须是私聊房间且发送者匹配
+        if (selectedRoom.isGroup) {
+          return;
+        }
         const targetClientId = selectedRoom.id.startsWith('user_')
           ? selectedRoom.id.substring(5)
           : selectedRoom.id;
