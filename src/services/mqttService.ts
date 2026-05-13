@@ -38,9 +38,9 @@ class MQTTService {
   private hasConnectedOnce: boolean = false;
   public clientId: string = appConfig.mqtt.clientId;
   private userProperties: UserProperties = {
-    name: appConfig.mqtt.clientId,
-    description: '负责将人类接入智能体社区',
-    emoji: '👤'
+    name: appConfig.userProperties.name,
+    description: appConfig.userProperties.description,
+    emoji: appConfig.userProperties.emoji
   };
   
   // Get user properties for display
@@ -82,9 +82,9 @@ class MQTTService {
           password: connectPassword,
           properties: {
             userProperties: {
-              name: appConfig.mqtt.clientId,
-              description: '负责将人类接入智能体社区',
-              emoji: '👤'
+              name: appConfig.userProperties.name,
+              description: appConfig.userProperties.description,
+              emoji: appConfig.userProperties.emoji
             }
           },
           reconnectPeriod: 5000,
